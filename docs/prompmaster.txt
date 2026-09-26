@@ -62,6 +62,19 @@ CONTENTS
      this document deliberately overrules the artwork; everything else about
      the mocks stands as drawn.
 
+0.3.2 IF THE MOCK DECK IS NOT ATTACHED, THIS DOCUMENT IS STILL COMPLETE. Every
+     layout, string, colour, measurement, formula and behaviour needed to build
+     the product is written here; Appendix C is provenance, not a dependency.
+     Do not block, do not ask for the images, do not copy another app from
+     memory. Where a mock IS attached and disagrees with this text, this text
+     wins (§0.2) — the deck predates several product decisions recorded in
+     Appendix D (no QR anywhere, no folder list on the phone's Videos tab,
+     swipe-driven photo viewer, real volume sliders, universal per-item
+     selection). An interactive HTML simulator may ship alongside this file
+     (maketup.html / ui-simulator.html): it is generated FROM this document,
+     tracks it exactly, and is the preferred visual reference when it is
+     present — but it too is subordinate to this text.
+
 0.4  Mock chrome that is NOT app UI and must NOT be implemented:
         - the drawn phone bezels / notches / rounded device frames,
         - the deck captions ("02 — the hub", "05 — dashboard · preferences", …),
@@ -244,7 +257,7 @@ D28 Phone photo/video grids open the viewer and the player on a body tap, bound
     to the tapped item (§6.9, §6.10, §6.11).                         [CHANGED]
 D29 Phone file surfaces carry an address bar, and the Files-tab categories and
     folders open real listings (§6.10).                              [CHANGED]
-D30 INV-9: no state change may scroll a list back to the top (§9).   [CHANGED]
+D30 INV-11: no state change may scroll a list back to the top (§9). [CHANGED]
 D31 Every player — phone music, phone video, WebShare audio bar, in-browser
     video — must support tap-to-seek AND drag scrubbing with a visible knob,
     live labels and working ±10 s, not a read-only progress bar (§6.11, §7.5,
@@ -523,9 +536,13 @@ D12 Everything else the reference drafts got right — the transfer invariants,
         History (Received | Sent)
         Settings → Logs · Connection Doctor · Help & FAQ · Replay onboarding
         Overlays: Queue sheet · Consent dialogs · Conflict dialog · Batch summary
-     Transfer, Broadcast, Viewer and the players are full destinations that KEEP
-     the bottom nav visible; the tab you launched from stays highlighted (this is
-     why the mocks show "Files" lit during a transfer).
+     Transfer, Broadcast and the music Now-Playing screen are full destinations
+     that KEEP the bottom nav visible; the tab you launched from stays
+     highlighted (this is why the mocks show "Files" lit during a transfer).
+     THE PHOTO VIEWER AND THE VIDEO PLAYER ARE THE EXCEPTION [CHANGED]: they are
+     immersive, full-bleed Activities (§8.1) whose own action row owns the
+     bottom edge, so they hide the nav and restore it on back. An earlier draft
+     of this paragraph listed them with the others; that was wrong.
 
 5.3  Back / Minimize / End.
        Back on a transfer screen = Minimize (session survives in the service).
@@ -581,8 +598,10 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      shrinks and a tappable discovered-device list takes the space — the radar is
      never the only way to disambiguate peers.
      Two big buttons side by side: [↑ Send] (accent filled) · [↓ Receive]
-     (outlined). A long-press on Send, or the overflow, offers "Broadcast to
-     several phones" (§6.8).                                              [GAP]
+     (outlined). Below them, a full-width washed button "⇶ Broadcast to several
+     phones" is the PRIMARY entry (§6.8.1, A28); a long-press on Send and the
+     overflow item are aliases for it. All three routes land on Discovery in
+     multi-select — never on the sender screen. [GAP resolved — D27]
      WebShare card: icon, "WebShare · PC", mono "http://192.168.1.24:33455",
      right-hand [ON] pill (green when running, neutral "OFF" when not). Tapping
      the card opens the WebShare screen; tapping the pill starts/stops directly.
@@ -1166,7 +1185,7 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      sticky breadcrumb bar "Internal storage / Download"
      where EVERY segment is clickable (INV-7), then a table NAME · SIZE ·
      MODIFIED with checkboxes on EVERY row, folders included, a per-row menu
-     (Download / Download .zip for folders · Delete) and folder rows that
+     (Download / Download as zip for folders · Delete) and folder rows that
      navigate when their name is clicked.
      SELECTION IS UNIVERSAL AND EXPLICIT [CHANGED]. Every category page —
      Photos, Videos, Music, Documents, Apps and Files — has a per-item checkbox
@@ -1176,8 +1195,10 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      without ever starting playback. In TABLES the checkbox is the first column.
      FLOATING SELECTION BAR (all categories, appears when n>0): "n selected",
      the summed size, then [⇓ Download] — plain, one direct request per file,
-     always offered, including for a single file — [⇊ Download .zip] (streamed
-     ZIP64), [Delete] and a Clear control. Offering only the zip is a defect:
+     always offered, including for a single file — [⇊ Download as zip]
+     (streamed ZIP64, exact copy per Appendix A — §7.5 earlier drafts said
+     "Download .zip"; Appendix A is authoritative under §3.8), [Delete] and a
+     Clear control. Offering only the zip is a defect:
      one file should never have to be unpacked.
      There is NO "send to phone" control in the browser's selection bar
      [CHANGED]: everything listed here already lives on the phone, so the button
@@ -1294,7 +1315,9 @@ D12 Everything else the reference drafts got right — the transfer invariants,
 9.2  THE OUTGOING WORKER — the most important loop in the app.
      Exactly ONE worker coroutine per session picks the first QUEUED send and
      calls session.sendFile(item, sha).
-     INV-9 NEVER SCROLL THE USER BACK TO THE TOP [CHANGED]. Ticking a checkbox,
+     INV-11 NEVER SCROLL THE USER BACK TO THE TOP [CHANGED]. (Numbered 11, not
+     9: §12.5 already owns INV-9 ORDERING and INV-10 PAGINATION. Both of those
+     stay binding; nothing here replaces them.) Ticking a checkbox,
      starting playback, a progress update or any other state change must leave
      every scroll container exactly where it was — phone lists, the WebShare
      content pane and the file tables alike. Re-rendering a whole list on each
@@ -1728,6 +1751,14 @@ D12 Everything else the reference drafts got right — the transfer invariants,
 19.3 CI (GitHub Actions): on push, assemble signed release and debug APKs, run
      unit tests and the lint gate (§20.8), and publish BOTH APKs as GitHub
      Release assets. A release is not done until both are downloadable.
+     SIGNING KEY RULE [CHANGED]. The release APK is signed with ONE stable
+     upload key held in repo secrets (KEYSTORE_B64, KEY_ALIAS, KEY_PASSWORD,
+     STORE_PASSWORD). Generating a throwaway key per build is FORBIDDEN: every
+     build would carry a different signature, so no device could ever update an
+     install, and the artifact would only look released. If the secrets are
+     absent, build the release variant with the debug key, name the artifact
+     `morsecode-<version>-preview-unsigned.apk`, say so in the run summary, and
+     treat §19.3 and A18 as NOT satisfied until the secrets exist.
 19.4 Size budget: release APK ≈ 6.5 MB, debug ≈ 8 MB; the ≤ 5 MB third-party
      growth budget is part of this.
 19.5 Where the local environment cannot compile, local tooling is a linter, not
@@ -1888,9 +1919,12 @@ A17  Accessibility: TalkBack can complete a send end to end, every control has a
      nothing critical.
 A18  All strings escaped and unique; lint gate green; unit tests green; signed
      release + debug APKs published as release assets.
-A19  IDENTITY: `grep -ri "morselink" .` over the whole repository — source,
-     resources, manifest, Gradle, CI config, WebShare assets and the generated
-     APK's strings — returns NOTHING. The launcher label is "Morsecode"; the
+A19  IDENTITY: `grep -ri "morselink" . --exclude-dir=docs` over everything the
+     build ships or generates — source, resources, manifest, Gradle, CI config,
+     WebShare assets and the generated APK's strings — returns NOTHING.
+     `docs/` is excluded because this specification and its provenance notes
+     (§0.3.1, §2, Appendix D) must keep naming the old project in order to
+     explain what was overridden; the gate binds artifacts, not inputs. The launcher label is "Morsecode"; the
      applicationId and root package are app.morsecode.android; the build reports
      1.0.0 (1); the chunk magic is "MRSC";
      partial downloads use `.morsecode.part`; received files land in
@@ -1906,7 +1940,7 @@ A21  WebShare selection: on EACH of Photos, Videos, Music, Documents, Apps and
      Files, ticking an item raises the bar with the live count and the summed
      size; "Select all" ticks the whole page and flips to "Clear selection";
      [Download] fetches the files directly (one request each, one plain download
-     for a single file) and [Download .zip] streams a single ZIP64 archive.
+     for a single file) and [⇊ Download as zip] streams a single ZIP64 archive.
      Ticking a video tile NEVER starts playback; clicking the tile body still
      streams it.
 A22  Every folder row in the Photos and Videos panels shows a thumbnail of its
@@ -1969,10 +2003,18 @@ A35  Resize/rotate through 320 dp, 360 dp, 480 dp, 600 dp and 840 dp in both
      and selection/scroll/playback state survives every configuration change.
      The same sweep on the WebShare site in a phone browser.
 
+22.1 EVIDENCE CLASSES [CHANGED]. Every criterion in §22 is reported as one of:
+     PASS (executed, with the command/output or the device and build), BLOCKED
+     (cannot be executed in this environment — say which and why), or FAIL.
+     "Shipped, not confirmed" is BLOCKED, never PASS. The two-phone criteria
+     (A1, A3, A9, A10) and the §21.2 device matrix are expected to be BLOCKED
+     in any CI-only environment; that is honest and acceptable, silently
+     marking them PASS is not (§20.6).
+
 --------------------------------------------------------------------------------
 23. DEFINITION OF DONE
 --------------------------------------------------------------------------------
-All 19 acceptance criteria pass on the Android 6 reference phone AND a current
+All 35 acceptance criteria (§22, A1–A35) pass on the Android 6 reference phone AND a current
 Android device, the real-device matrix (§21.2) passes, CI is green, and signed
 release + debug APKs are attached to the GitHub release.
 
