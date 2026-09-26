@@ -62,9 +62,40 @@ release, signing), §20.8 (lint gate), §20.9 (Kotlin constraints), Appendix B
 
 ### CI evidence
 
-See the "CI runs" section appended below — it records the actual run id,
-conclusion and artifact names for this stage's push, read from that run rather
-than inferred.
+Run [`36276610006`](https://github.com/ab2024103-cmd/morsecodev3/actions/runs/36276610006)
+on commit `46f6df8`, branch `arena/01a0dfbc-morsecodev3`, job `108500468894`,
+conclusion **success** in 2m51s. Every step succeeded, read back from that
+specific run rather than inferred (§19.5):
+
+```
+success  Lint gate (§20.8)
+success  Set up JDK 17
+success  Install the upload key, when the secrets exist (§19.3)
+success  Unit tests (§21.1)
+success  Assemble debug and release (§19.3)
+success  Upload build artifacts
+success  Publish both APKs as release assets (§19.3)
+```
+
+Release assets, both downloadable from
+`https://github.com/ab2024103-cmd/morsecodev3/releases/tag/ci-arena-01a0dfbc-morsecodev3`:
+
+| Asset | Size |
+|---|---|
+| `morsecode-1.0.0-debug.apk` | 5 587 476 B (5.33 MiB) |
+| `morsecode-1.0.0-preview-unsigned.apk` | 1 196 582 B (1.14 MiB) |
+
+So: the project compiles on a real toolchain, `IdsTest` (7 tests) passes, and
+both APKs exist as release assets. **A18 is still only partly satisfied**: the
+release APK carries the DEBUG key because no `KEYSTORE_B64` / `KEY_ALIAS` /
+`KEY_PASSWORD` / `STORE_PASSWORD` secrets exist on this repository, so it is
+published as `-preview-unsigned` exactly as §19.3's amended signing-key rule
+requires. Generating a throwaway key per build is forbidden, so this stays
+**BLOCKED** until the secrets are added — one action is needed from the repo
+owner, not from the build.
+
+Sizes are well inside §19.4 (release ≈ 6.5 MB, debug ≈ 8 MB) at skeleton stage;
+they are re-judged in Stage 17 with the whole product present.
 
 ### Not implemented yet, deliberately (and where it lands)
 
