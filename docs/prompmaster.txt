@@ -1,0 +1,2181 @@
+================================================================================
+MORSECODE — MASTER BUILD SPECIFICATION  (Build spec v1.0 · "Sunflower")
+Project / repo name : morsecode
+Product / app name  : Morsecode
+applicationId       : app.morsecode.android   (new project — see §1.1.1)
+Ships as            : 1.0.0 (versionCode 1) — a greenfield build, no installed
+                      base, no legacy data, no cross-version compatibility duty
+Reference drafts    : "MorseLink — Complete Product & Engineering Specification"
+                      and "MORSELINK — COMPLETE PROJECT SPECIFICATION" (module
+                      draft). BACKGROUND ONLY — prior art from a different
+                      project, carried forward where it is good and overridden
+                      freely where it is not. Neither is binding; this document
+                      is (§0.2). Nothing named "MorseLink" ships (§1.1.1).
+Date                : 2026-09-26
+================================================================================
+
+CONTENTS
+  0  How to use this document            12  Storage, destinations, media library
+  1  Product identity                    13  Device performance tiering
+  2  Provenance and deltas               14  Battery, power, OEM reliability
+  3  Hard platform rules                 15  Accessibility
+  4  Design system ("Sunflower")         16  Diagnostics and logging
+  5  Information architecture            17  Security and privacy
+  6  Screen specifications               18  Android version matrix
+  7  WebShare (phone <-> browser)        19  Build, versioning, release
+  8  Architecture                        20  Engineering rules / defect prevention
+  9  Transfer engine (1:1)               21  Test plan
+ 10  Broadcast engine (1 -> N)  [NEW]    22  Acceptance criteria
+ 11  Transports and wire protocol        23  Definition of done
+  A  String table   B  Colour card   C  Mock index   D  Gaps and decisions
+
+--------------------------------------------------------------------------------
+0. HOW TO USE THIS DOCUMENT
+--------------------------------------------------------------------------------
+
+0.1  You are an autonomous build agent. Your task is to implement (or re-skin and
+     extend) the full Android application described here, exactly as specified.
+     Every numbered requirement is BINDING. Where a value is prescribed (a hex
+     colour, a port, a string, a behaviour, a formula), reproduce it precisely —
+     do not substitute your own taste. Where nothing is prescribed (XML layout
+     syntax, class internals, coroutine plumbing), choose the SIMPLEST
+     implementation that satisfies every requirement and still runs on the oldest
+     supported device.
+
+0.2  Order of authority when two sources disagree:
+        1. This document.
+        2. The UI mock deck shipped with this document (see Appendix C).
+        3. The reference drafts named in the header (background only).
+        4. Anything else.
+
+0.3  The UI mock deck is the visual source of truth for layout, copy, colour and
+     information hierarchy. It exists in TWO complete renderings — a dark set
+     (a-series files) and a light set (b-series files). Both are shipping themes,
+     not concept art. See §4.1.
+
+0.3.1 THE MOCKS CARRY AN OLD WORDMARK. The deck was drawn for the earlier
+     MorseLink project, so some frames print "MorseLink" — onboarding slide 4's
+     button, the Help accordion's first question, the log-viewer header line,
+     the "MorseLink" media folder in the Videos/WebShare folder panels, and the
+     sample log version "1.5.1 (15)". Read every one of those as "Morsecode"
+     and 1.0.0 (1) respectively (§1.1, §19.1). This is the ONE respect in which
+     this document deliberately overrules the artwork; everything else about
+     the mocks stands as drawn.
+
+0.4  Mock chrome that is NOT app UI and must NOT be implemented:
+        - the drawn phone bezels / notches / rounded device frames,
+        - the deck captions ("02 — the hub", "05 — dashboard · preferences", …),
+        - the floating "Dark | Light" pill in the top-right of some sheets,
+        - the fake status-bar network-speed readout ("12.4K/s") — that is the
+          reference phone's own MIUI/EMUI status bar, not a Morsecode feature.
+
+0.5  Tags used below:
+     Everything in this document is being built from zero; the tags record
+     PROVENANCE, not migration state:
+        [NEW]      no prior art in either reference draft — design it from this
+                   document alone.
+        [CHANGED]  the reference drafts specified something different; this
+                   document overrides them. Do not "restore" the old behaviour.
+        [KEPT]     carried forward from the reference drafts on purpose — the
+                   rationale is hard-won (usually a real field defect). Treat a
+                   [KEPT] rule as release-blocking and do not "improve" it.
+        [GAP]      the mocks were silent or self-contradictory here; this
+                   document decides. All [GAP] decisions are listed in Appendix D.
+
+0.6  Build order that works: platform rules → design system → navigation shell →
+     transfer engine (1:1) → transports → screens → broadcast → WebShare →
+     diagnostics → release. Ship nothing that fails §22.
+
+--------------------------------------------------------------------------------
+1. PRODUCT IDENTITY
+--------------------------------------------------------------------------------
+
+1.1  NAMES. The repository/project is "morsecode". The product, the launcher
+     label, the store listing, every user-visible string, the log header and the
+     notification titles all say "Morsecode" — one word, capital M only. Never
+     "Morse Code", never "MorseCode", never "MorseLink". Named after Morse code:
+     communication without infrastructure.
+
+1.1.1 NAMING IS SINGLE-SOURCE. This is a NEW project. There is no shipped
+     predecessor to update, no installed base to migrate, no legacy peer to
+     interoperate with and therefore NO compatibility shims anywhere. Nothing —
+     no string, identifier, folder, scheme, magic number or class name —
+     contains "MorseLink" or "morselink". Use exactly these:
+
+       applicationId / root package  app.morsecode.android
+       Application class             MorsecodeApp.kt
+       Launcher label / app_name     Morsecode
+       versionName / versionCode     1.0.0 / 1  (§19.1)
+       Wire chunk magic              "MRSC" (4 bytes, §11.3)
+       Nearby service id             app.morsecode.android.nearby
+       Deep-link scheme              morsecode://<host>:<port>  (typed or
+                                     pasted only — there is no QR, §11.5)
+       Partial-download suffix       <name>.morsecode.part              (§9.4)
+       Default media folder          Download/Morsecode                 (§12.4)
+       Notification channel ids      morsecode.transfer · morsecode.webshare
+       Exported log header           Morsecode <version> (<versionCode>)
+       Signing key                   generate a fresh upload key for this repo;
+                                     there is no existing key to preserve.
+
+     Ports are 33455 (WebShare) / 33456 (TCP control+data) / 33457 (UDP
+     discovery) — chosen values, not inherited constraints; keep them so the
+     mocks, the docs and the firewall guidance agree.
+
+     FORWARD compatibility only: HELLO carries protocolVersion, which starts at
+     1 and exists so that a FUTURE Morsecode release can refuse or adapt to an
+     older one (§11.6). It is not a backward-compatibility promise to any other
+     product. If you find yourself writing a branch that reads a legacy format,
+     delete it — the case cannot occur.
+
+1.2  Pitch (one line, used in store copy and onboarding slide 1):
+     "Offline, peer-to-peer file transfer for Android. No cloud, no internet, no
+     accounts, no ads, no analytics."
+
+1.3  FOUR transfer surfaces (was three):
+     S1  Phone ↔ Phone over Wi-Fi LAN — both devices on the same router or
+         hotspot. The fast path and the default.
+     S2  Phone → many phones ("Broadcast") over Wi-Fi LAN or Nearby — one sender
+         fans the same queue out to up to 8 receivers at once.            [NEW]
+     S3  Phone ↔ Phone over Google Nearby Connections (Bluetooth / Wi-Fi Direct)
+         — the zero-infrastructure path when there is no shared network.
+     S4  Phone ↔ browser over WebShare — the phone runs an HTTP server on
+         :33455; any laptop or second phone on the same network browses,
+         downloads, plays and uploads.
+
+1.4  Target user and hardware. Someone with an old, low-RAM phone in a
+     connectivity-poor environment. The PRIMARY reference device is a HUAWEI
+     MYA-L10 on Android 6.0 (API 23) — every flow must complete end to end on it.
+     The SECONDARY reference device is a current Android 14/15 phone. minSdk 21.
+     Everything degrades gracefully; nothing functional is ever switched off
+     because a device is slow (§13).
+
+1.5  Design language [CHANGED]. Sunflower on near-black, or sunflower on warm
+     paper. One accent colour at a time, user-selectable from five. Flat cards
+     with hairline borders, generous touch targets, monospaced technical meta,
+     no shadows in dark mode, soft shadows in light mode. Calm, technical,
+     trustworthy. Custom lightweight widgets; no heavy UI framework. The app must
+     feel instant on a 2016 phone.
+
+1.6  Explicitly NOT in scope. Do not build, do not scaffold, do not hint at in
+     UI copy: contacts/vCard sharing; phone-clone/SMS/call-log migration; junk
+     cleaner or cache scanner; WhatsApp-status scraping or any browse of another
+     app's /Android/data/<pkg> sandbox; media converters; cloud backup or sync;
+     a native desktop app; any ad SDK, sponsored app row, or interstitial; any
+     analytics, attribution or telemetry SDK; any "connect to a stranger",
+     public/temporary-link or internet relay feature.
+     NOTE: "multi-device group send" was previously on this exclusion list. It is
+     now a headline feature (§10). The exclusion is deliberately revoked.
+
+1.7  Monetisation. None. No ads ever. If money is ever needed it is a single
+     one-time "Pro" unlock — never ads, never data, never fake urgency.
+
+--------------------------------------------------------------------------------
+2. PROVENANCE AND DELTAS (where this spec departs from the reference drafts)
+--------------------------------------------------------------------------------
+
+D1  Accent moves from teal #1FA36B to Sunflower #FACC15; green is demoted to a
+    purely semantic success/confirm colour.                            [CHANGED]
+D2  A full LIGHT theme ships alongside dark, plus "Follow system".     [NEW]
+D3  Broadcast: one sender → up to 8 receivers, per-peer progress rows,
+    aggregate stat tiles, per-peer verification.                       [NEW]
+D4  A single unified discovery list mixing LAN peers, Nearby peers and live
+    WebShare browser sessions, each with a transport badge — instead of a
+    "switch transport" toggle that hid half the network.               [CHANGED]
+D5  A WebShare browser session is now a first-class peer you can PUSH files to
+    ("Send files" in the browser header, "Office Laptop · WebShare" in the
+    discovery list).                                                   [NEW]
+D6  In-app media playback is promoted from a bare viewer to a real music player
+    (queue, up-next, favourite, media-session notification) and a real video
+    player (±10 s, volume, CC).                                        [CHANGED]
+D7  WebShare gains an in-browser video player page.                    [NEW]
+D8  Five-tile action bar on every transfer screen: Choose · Queue · Pause ·
+    Minimize · End — identical on send, receive, broadcast.            [CHANGED]
+D9  Settings gains the accent-colour picker, "Crash reports · local, never
+    uploaded", and a Diagnostics group.                                [CHANGED]
+D10 Default conflict policy becomes "Rename duplicates" (was "Always ask"). [CHANGED]
+D11 Identity: the reference drafts describe a product called MorseLink with
+    applicationId com.morselink.app. This is a separate, greenfield project —
+    Morsecode / app.morsecode.android / 1.0.0 (1), fresh signing key, "MRSC" chunk
+    magic, morsecode:// scheme. No legacy-compat code path exists anywhere and
+    none may be added (§1.1.1).                                        [CHANGED]
+D13 QR is removed from the product: no scanner, no generator, no /api/qr, no
+    rail entry, no camera permission, no ZXing. [Manual IP] on the discovery
+    screen is the only address-pairing path and every displayed address is
+    tap-to-copy (§11.5, G12).                                        [CHANGED]
+D14 Video volume is a continuous slider with mute-and-restore, in both the
+    native and the in-browser player — previously a mute toggle (§6.11, §7.6).
+                                                                     [CHANGED]
+D15 The phone's Videos tab is a grid only; the folder list the mocks draw there
+    belongs to the WebShare Videos page. Phone-side folder browsing lives in
+    the Files tab (§6.9, §7.5).                                      [CHANGED]
+D16 WebShare Photos and Videos always show their folder panel, and WebShare
+    Files is a two-pane file manager (quick folders + listing) (§7.5).
+                                                                     [CHANGED]
+D17 The WebShare audio player carries an explicit ✕ that stops playback,
+    releases the media element and dismisses the bar; the previous design could
+    only be paused, never exited (§7.5).                             [CHANGED]
+D18 Every folder row — photo albums, video folders — renders a thumbnail of the
+    most recently modified item inside it, not a generic icon (§7.5). [CHANGED]
+D19 WebShare quick access includes WhatsApp and Telegram, because that is where
+    most received media actually lands (§7.5).                       [CHANGED]
+D20 EVERY WebShare category page is selectable: Photos, Videos, Music,
+    Documents, Apps and the file browser each get a per-item checkbox and a
+    select-all in their section header. On media tiles the checkbox is a corner
+    control, so ticking queues the file while clicking the tile still streams
+    it — previously only Photos could be selected and a video could not be
+    downloaded without playing it first (§7.5).                      [CHANGED]
+D21 The selection bar always offers a plain [Download] beside [Download .zip],
+    on the phone and in the browser. Zip-only was a defect: a single file should
+    never have to be unpacked, and most people want the files, not an archive
+    (§7.5, §6.9).                                                    [CHANGED]
+D22 [Send] in the phone's selection bar navigates to the Transfer screen, and
+    the selection is cleared by the send itself (§6.9).              [CHANGED]
+D23 The browser's selection bar drops "Send to phone" — the files are already on
+    the phone (§7.5).                                                [CHANGED]
+D24 WebShare Photos gains a real lightbox viewer (§7.5).             [CHANGED]
+D25 Folders are selectable and downloadable everywhere — the phone's internal
+    storage listing and the WebShare file browser — and travel as one streamed
+    <folder>.zip (§6.10, §7.5).                                      [CHANGED]
+D26 Log export and the Files/viewer Share actions all raise the real Android
+    share sheet instead of writing silently (§6.14).                 [CHANGED]
+D27 The dashboard's "Broadcast to several phones" routes through multi-select
+    discovery and only then to the sender screen (§6.8.1).           [CHANGED]
+D28 Phone photo/video grids open the viewer and the player on a body tap, bound
+    to the tapped item (§6.9, §6.10, §6.11).                         [CHANGED]
+D29 Phone file surfaces carry an address bar, and the Files-tab categories and
+    folders open real listings (§6.10).                              [CHANGED]
+D30 INV-9: no state change may scroll a list back to the top (§9).   [CHANGED]
+D31 Every player — phone music, phone video, WebShare audio bar, in-browser
+    video — must support tap-to-seek AND drag scrubbing with a visible knob,
+    live labels and working ±10 s, not a read-only progress bar (§6.11, §7.5,
+    §7.6).                                                           [CHANGED]
+D32 The phone photo viewer fills the screen, is navigated by SWIPE (no arrow
+    buttons, page dots for position) and its Send FAB really queues that photo
+    and opens the Transfer screen (§6.10).                           [CHANGED]
+D33 The Files toolbar's sort icon opens a real sort sheet (Date/Name/Size/Type
+    + direction) that re-orders the active tab and every listing (§6.9). The
+    tab strip fills the width in five equal cells.                  [CHANGED]
+D34 §4.14: the whole product is responsive — adaptive grid spans, fluid rows,
+    no dead space, verified 320 dp → tablet, including WebShare in a phone
+    browser.                                                        [CHANGED]
+D12 Everything else the reference drafts got right — the transfer invariants,
+    the LAN framing rule, the WebShare no-idle-shutdown rule, the MediaStore
+    date/pagination rules — is KEPT verbatim, because each one encodes a real
+    defect that was paid for once already. Still release-blocking. See §9, §11,
+    §12, §20.
+
+--------------------------------------------------------------------------------
+3. HARD PLATFORM RULES (never violate)
+--------------------------------------------------------------------------------
+
+3.1  Kotlin. Single `:app` Gradle module, manual service locator
+     (`di/AppServices.kt`), no DI framework, no annotation processors beyond
+     AndroidX defaults. (If the build is ever split into modules, §20.7's
+     cross-module rules become binding; until then they are dormant.)
+
+3.2  minSdk 21, targetSdk 34+, compileSdk latest stable. ALL runtime code must be
+     API-23-safe: every API above 23 is version-checked; nothing crashes on
+     Android 6. Java-8 default collection methods (`removeIf`, `putIfAbsent`,
+     `computeIfAbsent`, `Stream`) require API 24 AT RUNTIME regardless of
+     compileSdk — guard each one with `Build.VERSION.SDK_INT >= 24` and a manual
+     loop fallback. This is enforced by the lint gate in §20.8.
+
+3.3  Third-party budget: total APK growth from non-AndroidX libraries ≤ 5 MB.
+     The allowed set is exactly: AndroidX, Google Play Services Nearby
+     Connections and NanoHTTPD. Nothing else. No image-loading library
+     is required (thumbnails go through MediaStore + a small LRU bitmap cache);
+     if one is used it must fit the 5 MB budget.
+
+3.4  No network egress except the local network. No analytics, no crash upload,
+     no update ping, no font/CDN fetch. Crash reports and logs never leave the
+     device unless the user exports them by hand.
+
+3.5  Manifest permissions — exactly this set, no additions:
+       INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE,
+       CHANGE_WIFI_MULTICAST_STATE, WAKE_LOCK
+       ACCESS_FINE_LOCATION (maxSdkVersion 30)
+       BLUETOOTH + BLUETOOTH_ADMIN (maxSdkVersion 30)
+       BLUETOOTH_SCAN + BLUETOOTH_ADVERTISE + BLUETOOTH_CONNECT (31+, neverForLocation)
+       NEARBY_WIFI_DEVICES (33+, neverForLocation)
+       READ_EXTERNAL_STORAGE (maxSdkVersion 32), WRITE_EXTERNAL_STORAGE (maxSdkVersion 28),
+       MANAGE_EXTERNAL_STORAGE, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO,
+       READ_MEDIA_AUDIO, READ_MEDIA_VISUAL_USER_SELECTED
+       POST_NOTIFICATIONS, FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC,
+       REQUEST_INSTALL_PACKAGES, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+       (CAMERA is NOT declared — there is no QR scanner, §11.5)
+     Do NOT declare CHANGE_NETWORK_STATE or anything not on this list. Wi-Fi and
+     Bluetooth hardware features are declared `required="false"`.
+     MANAGE_EXTERNAL_STORAGE is never requested at launch or during onboarding —
+     it is an optional, explained upgrade from Settings only (§12.3).
+
+3.6  `MainActivity` handles ACTION_SEND and ACTION_SEND_MULTIPLE (`*/*`): shared
+     items queue straight into the send flow with the destination unresolved.
+
+3.7  A foreground service (`dataSync`) owns every active session so minimising,
+     rotating or navigating away never interrupts a transfer. Battery-optimisation
+     exemption is requested with an explanation, never silently, never required.
+
+3.8  Every user-visible string lives in `strings.xml`, correctly escaped
+     (apostrophes as \'), no duplicate names, no hardcoded text in layouts or
+     Kotlin. Appendix A is the authoritative copy list.
+
+3.9  `networkSecurityConfig` permits cleartext for local/private ranges only
+     (WebShare needs it from API 28 on).
+
+--------------------------------------------------------------------------------
+4. DESIGN SYSTEM  ("Sunflower")
+--------------------------------------------------------------------------------
+
+4.1  THEMES. Three user choices: Light, Dark, Follow system. First run resolves
+     to the system setting; if the system has no preference, Dark. Both themes
+     are complete: every screen, dialog, sheet, notification and the WebShare
+     web UI must render correctly in both. Theme switching is instant and
+     preserves scroll position and transfer state.
+
+4.2  COLOUR TOKENS — DARK (sampled from the a-series mocks, exact):
+       bg/base                #0B0B0B
+       surface/card           #141414
+       surface/raised         #1A1A1A   (sheets, dialogs, chips, inputs)
+       surface/pressed        #1F1F1F
+       hairline/divider       #1F1F1F
+       text/primary           #F5F5F4
+       text/secondary         #A1A1AA
+       text/meta (mono)       #71717A
+       scrim                  #000000 @ 62%
+
+4.3  COLOUR TOKENS — LIGHT (sampled from the b-series mocks, exact):
+       bg/base                #EEEDE7   (warm paper, NOT pure white)
+       surface/card           #FFFFFF
+       surface/raised         #F5F4EE
+       surface/pressed        #E9E8E3
+       hairline/divider       #E4E1D8
+       text/primary           #141310
+       text/secondary         #6B6862
+       text/meta (mono)       #8A867E
+       scrim                  #141310 @ 38%
+       Light-mode cards carry a 1 dp #E4E1D8 border AND a 2 dp/4% soft shadow;
+       dark-mode cards carry the border only (never a shadow).
+
+4.4  ACCENT PALETTE. Exactly five swatches in Settings, in this order; the first
+     is the default:
+       1 Sunflower  #FACC15   (pressed/gradient-end #EAB308, deep #A16207)
+       2 Leaf       #84CC16   (pressed #65A30D)
+       3 Ember      #EA580C   (pressed #C2410C)
+       4 Violet     #8B5CF6   (pressed #7C3AED)
+       5 Sky        #0EA5E9   (pressed #0284C7)
+     Ink on any accent fill: #1A1400 in light-on-accent situations, i.e. always a
+     near-black, never white — the accents are bright.
+     The accent tints: primary buttons, selected nav/tab, progress fill start,
+     radar, links, focus rings, chip outlines, the profile avatar, the accent
+     wash on summary cards. It NEVER recolours the launcher icon or the logo.
+     Accent wash (used by every "summary" card): accent @ 8% fill + accent @ 35%
+     1 dp border in dark; accent @ 14% fill + accent @ 45% border in light.
+
+4.5  SEMANTIC COLOURS (identical in both themes, these do NOT follow the accent):
+       success / verified / DONE / Accept / "Send (n)" pill   #22C55E
+       receiving (RECV chip, incoming rows)                    #A78BFA on #412D6D
+       sending / in-progress                                   current accent
+       paused / warning                                        #F59E0B
+       failed / error / End session / Reject-destructive       #EF4444
+       neutral chip                                            surface/raised + text/secondary
+     Progress fill is a left-to-right gradient from the accent to #84CC16;
+     a COMPLETED bar is solid #22C55E; a PAUSED bar is solid #F59E0B; a FAILED
+     bar is solid #EF4444 at 40% width-frozen.
+     The WebShare storage bar is a three-stop gradient #FACC15 → #EA580C → #22C55E.
+
+4.6  PEER IDENTITY COLOURS. Every peer gets a letter avatar (first letter of its
+     device name, uppercase) on a deterministic colour chosen by
+     `abs(deviceId.hashCode()) % 6` over this fixed palette — independent of the
+     accent so peers stay distinguishable:
+       #F59E0B (amber) · #8B5CF6 (violet) · #0EA5E9 (sky) · #22C55E (green) ·
+       #EF4444 (red) · #EC4899 (pink)
+     The mocks' M/R/P/S avatars (MYA-L10 amber, Ravi's Redmi violet, Pixel 7X sky,
+     Samsung A14 green) must reproduce exactly for those names.
+
+4.7  TYPOGRAPHY. System family (Roboto). A second face, the system MONOSPACE, is
+     used for all technical meta — this is a defining part of the look.
+       screen title            20 sp  medium
+       section header          11 sp  medium, UPPERCASE, +0.08 em, text/secondary
+                                      ("ACCENT COLOUR", "DISCOVERED", "SYSTEM")
+       list item title         15 sp  medium
+       list item meta          12 sp  MONO, text/meta  ("4.1 MB · queued")
+       state chip              10 sp  MONO, UPPERCASE, +0.06 em
+       body / FAQ answer       14 sp  regular, 1.45 line height
+       button label            14 sp  medium, sentence case
+       stat tile value         20 sp  bold, accent
+       stat tile label          9 sp  MONO, UPPERCASE, text/meta
+       log line                11 sp  MONO
+     All sizes in sp, never dp. Layouts must survive the largest system font
+     scale without hiding a file name, percentage, state or button label; long
+     file names use MIDDLE ellipsis so the extension always stays visible.
+
+4.8  SPACING, SHAPE, ELEVATION.
+       base unit 8 dp · screen padding 16 dp · list row vertical padding 12 dp
+       card radius 16 dp · sheet radius 20 dp (top only) · dialog radius 20 dp
+       chip radius 8 dp · thumbnail radius 10 dp · avatar radius full circle
+       primary button radius 14 dp (rectangular-rounded, NOT a pill — the mocks'
+         "Continue" / "Grant permissions" buttons are 14 dp)
+       segmented control radius full pill (History Received/Sent)
+       minimum touch target 48 × 48 dp everywhere, achieved with padding, never
+         by inflating the icon artwork.
+
+4.9  ICONOGRAPHY. One outlined set, 24 dp, 2 dp stroke, currentColor. Category
+     and onboarding icons are the only filled artwork: solid rounded squares
+     (22% radius) with a white glyph, one colour per concept —
+       onboarding: radar #F59E0B→#EA580C, lock #22C55E, globe #0EA5E9, check #8B5CF6
+       file types: image #F59E0B, video #0EA5E9, audio #A78BFA, doc #22C55E,
+                   archive #EF4444, apk #8B5CF6, unknown #71717A
+     Every icon-only control ships a contentDescription (§15.1).
+
+4.10 LOGO / LAUNCHER ICON. A squircle tile with a warm orange gradient
+     (#EF7D0F → #F5A712 → #FBBF24, 135°) carrying a black Morse glyph: three
+     heavy vertical bars on the left, six dots in a 2 × 3 grid on the right, and
+     one long horizontal bar underneath — as in logo.PNG. Ships as adaptive
+     (foreground + #F5A712 background), legacy, and round mipmaps at every
+     density, in EVERY build. A default template icon is a release blocker. The
+     logo never takes the accent colour.
+
+4.11 MOTION. Radar sweep 2.4 s linear with 3 pulsing blips (1.6 s). Progress bars
+     lerp to their new value over 150 ms rather than jumping. Chips crossfade
+     120 ms. Sheets spring in 220 ms. Everything obeys
+     `Settings.Global.ANIMATOR_DURATION_SCALE`; on a low tier device (§13) the
+     radar degrades to a static ring + "Searching…" and progress animation is
+     disabled.
+
+4.12 CORE COMPONENTS (build once, reuse everywhere):
+     a) PeerCard — avatar, name, "Connected · Phone · LAN" mono subtitle, right
+        transport badge (LAN / NEARBY / WEB / FROM). Used on transfer, receive,
+        broadcast and complete screens.
+     b) TransferRow — type icon tile, file name, mono meta line
+        ("48.9 / 144 MB · 6.2 MB/s"), right state chip, thin progress bar
+        underneath, optional trailing ✕. Variants: sender, receiver, per-peer
+        sub-row (indented, avatar instead of icon tile, right-aligned percent).
+     c) SummaryCard — accent-wash card with a title line ("Batch in progress",
+        "✓ Batch complete", "Broadcasting to 3 phones"), a mono detail line, and
+        an optional row of up to three StatTiles.
+     d) StatTile — value + mono uppercase label on surface/raised.
+     e) ActionBar — 5 evenly spread tiles: Choose (+, accent-washed tile),
+        Queue (☰), Pause (❚❚), Minimize (—), End (✕, #EF4444). Labels always
+        visible under the icons.
+     f) BottomNav — Connect (◎) · Files (▭) · History (◷) · Settings (≡);
+        selected item gets an accent-washed rounded tile behind the icon and an
+        accent label.
+     g) StateChip, SectionHeader, EmptyState (icon + line + action), Tip
+        (dismissible one-time hint), ConsentDialog, BottomSheet.
+
+4.13 HARD UI RULES.
+     - Status is NEVER communicated by colour alone: every state has a chip with
+       a word (QUEUED / SENDING / RECV / PAUSED / DONE / FAILED / SKIPPED) or an
+       icon plus a label.
+     - One accent at a time across the whole product, including WebShare. Green,
+       violet, amber and red appear only with their §4.5 semantic meaning.
+     - Confirm before Material widgets: check what the base theme actually
+       inherits from (MDC-2 vs M3) and use the matching widget variant. A switch
+       that renders 0 dp tall is a theme-ancestry bug, not a logic bug.
+     - No screen may hard-code a hex value; everything resolves through the token
+       names above so the accent picker and the light theme keep working.
+
+4.14 RESPONSIVE LAYOUT — ONE UI, EVERY SCREEN SIZE [CHANGED]
+     Nothing in this product may assume a 360 dp phone. Every screen is built
+     from fluid containers and verified at, at minimum:
+       · 320 dp (small phone) · 360–412 dp (mainstream) · 480 dp (large phone)
+       · 600 dp (small tablet / split-screen) · 840 dp+ (tablet, foldable open)
+       · landscape at each of those, and at the largest system font scale.
+     Rules:
+       - No fixed pixel widths for content. Grids use an adaptive column count
+         (e.g. GridLayoutManager with a target cell width: 3 columns at 360 dp,
+         4 at 480 dp, 6+ on a tablet) rather than a hard-coded span of 3.
+       - Rows, sheets, dialogs and the selection bar stretch to the container
+         and cap their maximum width on wide screens instead of spanning a
+         metre of tablet.
+       - Tab strips, segmented controls and action bars distribute their cells
+         evenly and never leave dead space at one edge.
+       - Text wraps or ellipsises; nothing is clipped, and no layout scrolls
+         horizontally unless it is explicitly a carousel.
+       - Foldables and split-screen: re-layout on configuration change with all
+         state (selection, scroll, zoom, playback) intact; the transfer engine
+         never restarts because the window resized.
+       - WebShare's pages are responsive too: the rail collapses, the folder
+         panel becomes a horizontal chip strip and low-value table columns
+         (Modified) drop out on narrow viewports — a phone browser must be able
+         to use the site (§7.5).
+
+--------------------------------------------------------------------------------
+5. INFORMATION ARCHITECTURE
+--------------------------------------------------------------------------------
+
+5.1  Exactly four bottom tabs, no secondary shortcut row, no "AI" entries:
+        [ Connect ]   [ Files ]   [ History ]   [ Settings ]
+     Every tab must open without crashing; a crashing tab is a release blocker.
+
+5.2  Navigation map.
+        Connect (dashboard)
+          ├─ Send            → Discovery → Transfer(SENDING)
+          ├─ Receive         → Receive(listening) → Transfer(RECEIVING)
+          ├─ Broadcast       → Discovery(multi-select) → Broadcast(sender)
+          ├─ WebShare card   → WebShare screen (start/stop, URL, sessions)
+          ├─ Recent device   → reconnect → Transfer
+          └─ ? (help)        → Help & FAQ / Connection Doctor
+        Files (Photos · Videos · Music · Apps · Files)
+          ├─ selection bar   → Send (n) → Discovery/attach to session
+          ├─ item tap        → Viewer / Music player / Video player
+          └─ Add a folder    → SAF tree grant
+        History (Received | Sent)
+        Settings → Logs · Connection Doctor · Help & FAQ · Replay onboarding
+        Overlays: Queue sheet · Consent dialogs · Conflict dialog · Batch summary
+     Transfer, Broadcast, Viewer and the players are full destinations that KEEP
+     the bottom nav visible; the tab you launched from stays highlighted (this is
+     why the mocks show "Files" lit during a transfer).
+
+5.3  Back / Minimize / End.
+       Back on a transfer screen = Minimize (session survives in the service).
+       Minimize = same, and returns to where you came from.
+       End = confirm dialog ("End this session? Queued files will be paused.")
+             then a clean BYE to every peer.
+       Back must always fall back to popping the stack when there is no sensible
+       up-target (covers the post-crash relaunch state).
+
+5.4  A screen's purpose is always passed as an explicit navigation argument
+     (SENDER / RECEIVER / BROADCAST / RESUME) — never inferred from incidental
+     state such as "is something queued right now".
+
+--------------------------------------------------------------------------------
+6. SCREEN SPECIFICATIONS (mock by mock, copy included)
+--------------------------------------------------------------------------------
+
+6.1  ONBOARDING — "01 — first launch (replayable)"
+     Four full-bleed slides, swipeable, dot indicator (active dot is an accent
+     pill), primary button + text secondary action. Replayable any time from
+     Settings → About → Replay onboarding.
+       Slide 1  icon: orange radar squircle
+                title "Send files without the internet"
+                body  "Direct phone-to-phone transfer over Wi-Fi or Bluetooth.
+                       No cloud. No accounts. No ads."
+                [Continue]  · Skip
+       Slide 2  icon: green padlock squircle
+                title "Permissions we need"
+                body  "Nearby devices to find peers. Storage to read and save
+                       files. Battery exemption to keep transfers alive when the
+                       screen is off."
+                [Grant permissions] · Not now
+       Slide 3  icon: blue globe squircle
+                title "Or use a browser"
+                body  "Start WebShare and any laptop on the same network can
+                       browse, download, and upload from your phone."
+                [Continue] · Skip
+       Slide 4  icon: violet check squircle
+                title "You're all set"
+                body  "Tap Send to choose files or Receive to listen. Everything
+                       stays on your local network."
+                [Open Morsecode] · Replay tour
+     Slide 2 requests only the permissions needed to discover and save; it never
+     requests MANAGE_EXTERNAL_STORAGE or battery exemption silently — battery
+     exemption is a separate, explained prompt (§14.1). Skipping is always
+     allowed; skipped permissions are then requested contextually with the same
+     rationale text the first time they are actually needed.
+
+6.2  CONNECT · DASHBOARD — "02 — radar · send/receive · recent"
+     Title "Connect" + "?" help icon (opens §6.17).
+     Radar animation (accent sweep, green blips) with caption "3 devices nearby"
+     / "Scanning the local network". If more than one peer is found the radar
+     shrinks and a tappable discovered-device list takes the space — the radar is
+     never the only way to disambiguate peers.
+     Two big buttons side by side: [↑ Send] (accent filled) · [↓ Receive]
+     (outlined). A long-press on Send, or the overflow, offers "Broadcast to
+     several phones" (§6.8).                                              [GAP]
+     WebShare card: icon, "WebShare · PC", mono "http://192.168.1.24:33455",
+     right-hand [ON] pill (green when running, neutral "OFF" when not). Tapping
+     the card opens the WebShare screen; tapping the pill starts/stops directly.
+     "RECENT DEVICES" section header with a "Clear" action, then rows:
+       R  Ravi's Redmi   2 min ago · 144 MB video     [LAN]
+       O  Office Laptop  Yesterday · WebShare         [WEB]
+       P  Pixel 7X       3 days · 12 files            [NEARBY]
+     Tapping a recent device re-runs discovery for it and, on success, opens the
+     consent handshake — recency shortens discovery, never consent.
+
+6.3  SEND · DISCOVERY — "Send files"
+     Toolbar: back · "Send files" · overflow.
+     Radar + "Searching for devices" / "Look for peers on the same Wi-Fi network".
+     Two mono info rows: TRANSPORT — "Wi-Fi LAN" (tap to change preference: Auto
+     / Wi-Fi LAN / Nearby) · QUEUE — "3 files · 152 MB" (tap opens the queue).
+     "DISCOVERED" header with a "Refresh" action, then one UNIFIED list of every
+     visible peer regardless of transport, each row = avatar, name, mono subtitle
+     and a transport badge, with a [Connect] button:
+       R  Ravi's Redmi   192.168.1.42 · Phone · LAN        [Connect]
+       P  Pixel 7X       Bluetooth 5.2 · Phone · Nearby    [Connect]
+       O  Office Laptop  192.168.1.88 · WebShare           [Connect]
+     Bottom: ONE [Manual IP] button (accepts "host" or "host:port", defaulting
+     to 33456). There is no QR scanner anywhere in the product [CHANGED] — see
+     §11.5; do not add a camera button to this screen.
+     Empty state after 15 s: "No devices found yet" + [Open Connection Doctor]
+     + [Try Nearby instead].
+     Multi-select mode (entered from Broadcast): each row gets a checkbox and
+     the bottom area holds exactly ONE control, [Broadcast to (n)] — max 8, see
+     §10. Manual IP is hidden in multi-select: a broadcast is formed from peers
+     that were actually discovered, never from a typed address.
+
+6.4  TRANSFER · SENDING
+     PeerCard: "Ravi's Redmi · Connected · Phone · LAN" + [LAN] badge.
+     Section header "Sending · 3 files" with a right-aligned "Pause all".
+     TransferRows exactly as mocked:
+       ↑ holiday_2019.mp4   48.9 / 144 MB · 6.2 MB/s        [SENDING]  ✕
+       ◷ IMG_2043.jpg       4.1 MB · waiting                [QUEUED]   ✕
+       ◷ live_set_final.flac 39.7 / 64 MB · resume 39.7 MB  [PAUSED]   ✕
+     SummaryCard: "Batch in progress" / "1 sending · 1 queued · 1 paused — avg
+     6.2 MB/s".
+     ActionBar: Choose · Queue · Pause · Minimize · End.
+     "Receiving" section is ALWAYS part of the layout (it appears the moment the
+     peer sends something back) — never conditionally removed.
+
+6.5  RECEIVE · LISTENING
+     Large downward-arrow glyph inside a soft accent glow, "Listening for
+     senders", body "Keep this screen open. Anyone on your network can send files
+     — you can queue files to send back too."
+     Three mono info rows: BROADCASTING AS — MYA-L10 · TRANSPORT — Wi-Fi LAN · BT
+     · PORT — 33456.
+     Same ActionBar. Incoming requests raise the consent dialog (§6.16).
+
+6.6  TRANSFER · RECEIVING (+ sending back)
+     PeerCard "Pixel 7X · Connected · Phone · Nearby [Nearby]".
+     "Receiving · 1 file" + Pause:
+       ↓ notes_backup.zip   13.1 / 18.2 MB · 8.4 MB/s   [RECEIVING]  ✕
+     "Sending back · 2 files" + Pause all:
+       ✓ holiday_2019.mp4   144 MB · CRC verified        [DONE]      ✕
+       ↑ IMG_2043.jpg       2.9 / 4.1 MB · 5.7 MB/s      [SENDING]   ✕
+     SummaryCard "✓ Batch complete — 3 received · 0 failed · 1 skipped — avg
+     8.4 MB/s".
+     [GAP] When both directions have a terminal batch, the card shows TWO lines,
+     "In: n received · n failed · n skipped — avg X" and "Out: n sent · …", never
+     one line that silently mixes directions.
+
+6.7  QUEUE SHEET — "04 — full outgoing queue"
+     Bottom sheet over a dimmed transfer screen, drag handle, title
+     "Queue · 3 items". Each row: state chip + file name, mono progress line, and
+     contextual buttons —
+       SENDING → [Pause] [Retry] [Cancel]
+       QUEUED  → [Send now] [Remove]
+       PAUSED  → [Resume] [Remove]
+       FAILED  → [Retry] [Remove]   (+ the error text in #EF4444)
+     Long-press a QUEUED row to drag-reorder; reordering an active or finished
+     row is visibly disabled, never a silent no-op. Sheet footer: [Pause all] /
+     [Resume all] · [Clear completed] · [Retry all failed] (only when relevant).
+     In broadcast mode each row expands to show its per-peer children.
+
+6.8  BROADCAST — deck "01 topology / 02 sender / 03 receivers / 04 complete"
+     6.8.1 Entry: Connect → Send → long-press/overflow "Broadcast", or the
+           Broadcast button on the dashboard. EITHER ENTRY POINT OPENS DISCOVERY
+           IN MULTI-SELECT FIRST [CHANGED] — the dashboard button must never
+           jump straight to the sender screen, because a broadcast with no
+           chosen peers is meaningless. Discovery in multi-select lists PHONES
+           (a browser is not a broadcast target), the primary button reads
+           [Connect & broadcast to (n)] and is refused with a snackbar below
+           two peers. Only after the peers accept does the sender screen open,
+           with its per-peer rows starting at 0 %.
+           [Broadcast to (3)] starts it. Each receiver gets its own consent
+           prompt; the sender shows each peer as Pending → Accepted → Sending, or
+           Rejected (row greys out, batch continues).
+     6.8.2 Sender screen, title "Broadcasting":
+           For every file, one parent TransferRow (icon, name, "4.1 MB · queued",
+           right chip) followed by one indented sub-row PER PEER: letter avatar,
+           its own thin progress bar, right-aligned percent or "–" while queued.
+           SummaryCard: "⇶ Broadcasting to 3 phones" / "1 broadcasting · 2 queued
+           — combined throughput 14.2 MB/s" and three StatTiles:
+             3 PEERS · 212 BATCH MB · 636 TO SEND MB
+           (See §10.4 for the exact formulas; the mock's "TOTAL MB / MB SENT"
+           labels were ambiguous and are replaced — [GAP], Appendix D.)
+           Same 5-tile ActionBar. Pause/End apply to ALL peers; a per-peer
+           pause/cancel lives in the queue sheet and in the sub-row's overflow.
+     6.8.3 Receiver screens are ordinary receiving screens whose PeerCard reads
+           "MYA-L10 · Broadcast · Phone · LAN" with a [FROM] badge, and whose
+           summary card reads "Receiving from MYA-L10 — 1 receiving · 2 queued —
+           avg 4.8 MB/s". A receiver never needs to know how many other
+           receivers exist.
+     6.8.4 Completion, sender: header card "✓ Broadcast complete / All 3 phones
+           verified" with an "×3" chip. "Delivered to" list — one row per peer:
+           avatar, name, full green bar, green ✓ (or a red ✗ + [Retry peer]).
+           SummaryCard "✓ Batch complete — 9 deliveries · 0 failed · 0 skipped —
+           avg 14.2 MB/s" + tiles: 3 PHONES · 3 FILES EACH · 636 MB SENT.
+           A "Clear" action empties the delivered list.
+     6.8.5 Completion, receiver: header PeerCard, "Received · 3 files" with an
+           "Open folder" action, each row "144 MB · CRC verified" + [DONE] chip,
+           summary "✓ Batch complete — 3 received · 0 failed · 0 skipped — avg
+           4.8 MB/s".
+
+6.9  FILES — "05 — photos · videos · music · apps · files"
+     Toolbar: "Files" + search · SORT · view-toggle icons.
+     THE SORT ICON IS A WORKING CONTROL [CHANGED], not decoration. Tapping it
+     opens a bottom sheet "Sort by" listing Date modified · Name · Size · Type
+     (current key in the accent, with a tick) plus a Descending / Ascending
+     pair. Choosing re-orders the CURRENT tab immediately and the order persists
+     while the app is open; the active order is echoed under the tab strip and
+     in the sheet's subtitle ("Size · smallest first"). Rules: folders always
+     sort before files; day groups keep their headers and are ordered inside;
+     the same sheet serves every directory listing (§6.10). An icon that does
+     nothing is a defect — this one was inert in the mocks.
+     EXACTLY five tabs: Photos | Videos | Music | Apps | Files.
+     THE TAB STRIP FILLS THE WIDTH [CHANGED]: five equal flex cells, each
+     centred, with the 2 dp accent underline spanning its own cell. No leftover
+     gap on the right at any width, and no horizontal scrolling — the labels
+     shrink before the strip does. (Mocks that show
+     four are cropped — [GAP].) The active tab indicator and the rendered data
+     come from ONE tab-index source of truth; a mismatch is release-blocking
+     because it makes people send the wrong files.
+     PHOTOS — day-grouped grid (3 columns, 4 dp gaps, 10 dp radius). Group header
+       "Today · 6 items" with a round select-all toggle on the right (empty
+       circle → green filled check when the whole group is selected). Selected
+       tiles get an accent border + green check badge. Real thumbnails only.
+     VIDEOS — the SAME day-grouped grid as Photos, with a duration badge
+       bottom-right and a play glyph centred [CHANGED]. NO folder list on this
+       tab: the mock's "All videos · Telegram · WhatsApp Video · Camera ·
+       Morsecode" panel belongs to the WebShare Videos page (§7.5), not to the
+       phone. On the phone, folder browsing lives in the FILES tab, which is
+       what it is for; duplicating it here made two half-answers to one
+       question. Same rule for Photos: grid only.
+     MUSIC — list rows: art/note tile, title, "Artist · 3:42 · 8.4 MB" mono meta.
+       Missing artist renders "Unknown artist" — never a raw `<unknown>`.
+     APPS — list/grid of installed apps with the REAL icon from PackageManager,
+       label, version, APK size, and a [Send]/checkbox. No sponsored section.
+     FILES — "CATEGORIES": Documents 155 · Ebooks 111 · Archives 3 · APKs 1 ·
+       Large files 1, each a coloured squircle + count + chevron. Then "FOLDERS":
+       Download · Internal storage · (any SAF-granted folder) · "+ Add a folder".
+       Inside a folder: rows with type icon, name, "2.4 MB · 12 May 2024", and a
+       fully interactive address bar (§6.9.1).
+     SELECTION IS PER ITEM ON EVERY TAB [CHANGED]. Photos, Videos, Music and
+     Apps each support (a) a single-item toggle and (b) the group select-all
+     control in the section header — a tab that only offers select-all is a bug.
+     The Files tab is a browser, so the rule applies to every listing reached
+     inside it. One selection basket is shared by all five tabs, so a send can
+     mix a photo, a track and an APK; the bar then counts "items".
+     Rules: each photo/video tile carries a persistent circular check affordance
+     (top-left on video tiles so it never covers the duration badge); each music,
+     app and file ROW carries a leading check target. A tap on the BODY of an
+     item opens it (player, viewer) while no selection exists; once at least one
+     item is selected the whole surface switches to selection mode and a body tap
+     toggles instead of opening — the standard Android gallery behaviour. Long
+     press always enters selection mode. Clearing the last item leaves selection
+     mode. The Send button always reports the live count AND the summed bytes.
+     SELECTION BAR (appears over the bottom nav the moment anything is selected):
+       green pill [✓ Send (2) · 357.1 KB] then Share · Delete · Cancel (labels
+       under icons). In the compact variant the trailing icons are move, delete,
+       overflow, ✕. Counts and bytes update live.
+     WHAT [Send] MUST DO [CHANGED] — it is a navigation action, not a toast:
+       1. enqueue every selected item on the active session (if no session is
+          connected, open Discovery first with the batch held as pending, then
+          enqueue the moment a peer accepts);
+       2. CLEAR the selection — selection mode ends with the send, it does not
+          survive it, and the user must never have to tap ✕ afterwards;
+       3. navigate straight to the TRANSFER screen (§6.6) so the queued rows are
+          visible with live progress, exactly as if the files had been picked
+          from Connect → Send;
+       4. confirm with a snackbar: "Queued 2 items · 43.6 GB → Ravi's Redmi".
+       Staying on the picker after a send is a defect.
+     [Share] opens the real Android chooser (ACTION_SEND / ACTION_SEND_MULTIPLE
+     with the selected content URIs) — the system sheet with the user's own
+     apps, never an in-app imitation and never a toast (§6.14 uses the same
+     chooser for the log export).
+     While a category count is still being computed show a shimmer placeholder —
+     never a hard "0" and never an empty state until the scan has genuinely
+     finished. Counts come from indexed MediaStore queries, not recursive walks,
+     and must land in well under a second on a modern phone, a few seconds at
+     worst on the reference MYA-L10.
+     OPENING MEDIA [CHANGED]. The grids are not only pickers: a tap on the BODY
+     of a photo opens the full-screen VIEWER (§6.10) and a tap on the body of a
+     video opens the PLAYER (§6.11), both bound to the item that was tapped —
+     right filename, right size, right duration — with ‹ › moving through the
+     same day-grouped list. The check circle is the only selecting target while
+     nothing is selected. A grid where tapping can only select, so the viewer is
+     unreachable, is a defect. A one-line hint under the tab strip states the
+     rule ("Tap a photo to open the viewer · tap its circle to select it").
+     ADDRESS BAR [CHANGED]. Every phone file surface — the Files tab and every
+     directory listing — carries a mono ADDRESS BAR above the list:
+     [↑ up one level] /storage/emulated/0/<dir> [copy path] [edit path], where
+     each path segment is tappable and jumps to that level. The Files tab's
+     CATEGORY rows (Documents · Ebooks · Archives · APKs · Large files) and its
+     folder rows all open a real listing with that bar filled in; a row that
+     only raises a toast is a defect.
+     BROWSING INTERNAL STORAGE [CHANGED]. The "Download" and "Internal storage"
+     rows are not labels — each opens a real directory listing with a
+     breadcrumb, and every row in it, FOLDERS INCLUDED, carries the same check
+     target as a file. A selected folder is sendable and shareable: it is
+     transferred as one archive, named <folder>.zip, and it counts as one item
+     with the folder's recursive size in the selection bar. Folder rows show
+     size · item count · modified. Tapping a folder opens it while nothing is
+     selected and toggles it once a selection exists.
+     Long-press → action toolbar: Send · Share · Delete · Rename · Move · Copy ·
+     Compress · Properties. Delete goes to an in-app Trash with an Undo snackbar
+     and auto-purge; "Delete forever" lives in Trash only.
+     Overflow adds: Create folder · Extract · Hidden files · Grid/list · Sort key
+     + direction · Search filters (type/size/date) · Storage volume (Internal /
+     SD / USB-OTG) · Clipboard cut-copy-paste with progress and cancel · Batch
+     rename with preview.
+     Any operation slower than an instant shows determinate progress plus cancel,
+     and reports per-item failures, never one opaque error.
+     6.9.1 ADDRESS BAR. Every path segment is an individual 48 dp tap target
+       separated by chevrons; tapping a segment jumps there; the caret between
+       segments opens a sibling-folder popup; tapping empty space turns the bar
+       into an editable path field. The bar keeps its full height even at the
+       storage root with zero segments.
+     6.9.2 THUMBNAILS. Real decoded thumbnails for photos and videos, the real
+       packaged icon for APKs, real embedded album art for music with the note
+       tile as fallback. Every async load into a recycled row carries a bind
+       token that is re-checked before the bitmap is applied. A whole list of
+       blank icons means the loader is unwired — root-cause it, do not paper over
+       it with a placeholder.
+     6.9.3 Photos/Videos ordering: date-taken, falling back to date-modified
+       (§12.5). Day headers appear exactly once, in order.
+
+6.10 VIEWER — "06 — fullscreen image"
+     Black (dark) / #141310 (light) full-bleed. Top bar: back circle, file name,
+     mono "5 of 15 · 4032 × 3024 · 2.4 MB", overflow circle.
+     THE IMAGE FILLS THE VIEWER [CHANGED]: the pager occupies every pixel between
+     the top bar and the action row, and the bitmap is fitted (contain) inside
+     it — a small centred card floating in black is wrong, the point of an
+     immersive viewer is the photo.
+     NAVIGATION IS A SWIPE, NOT BUTTONS [CHANGED]. No ‹ › chrome on the phone.
+     The viewer is a horizontal pager over the current folder/day list:
+       · dragging moves the deck 1:1 with the finger and the neighbouring photos
+         come in from the edges (three slides live at a time: prev/current/next);
+       · releasing past ~22 % of the width (or a flick) commits to that
+         neighbour and animates in ~220 ms; anything less snaps back;
+       · the deck wraps at both ends; vertical scroll gestures are not captured
+         (touch-action: pan-y) and pinch-zoom still works on the current photo;
+       · a page-dot strip shows position (accent = current) with a short
+         "‹ swipe to browse ›" hint on first entry;
+       · hardware keyboards (and the WebShare lightbox) keep ← → as an
+         equivalent, because a desktop has no thumb.
+     Bottom: four neutral circular buttons — Share · Edit · Delete · Info — and
+     one accent circular SEND FAB (➤). "Edit" launches ACTION_EDIT and is hidden
+     when no handler exists.
+     THE SEND FAB ACTUALLY SENDS [CHANGED]: it queues THIS photo on the active
+     session and opens the Transfer screen with the new row visible, exactly
+     like [Send] in the picker (§6.9) — same enqueue, same navigation, same
+     snackbar ("Queued IMG_2007.jpg · 2.4 MB → Ravi's Redmi"). With no session
+     it opens Discovery first. A FAB that only raises a toast is a defect. Config-change safe; survives rotation with zoom
+     state intact. The user must never need a third-party gallery.
+
+6.11 MEDIA PLAYERS — "07 — music · video" / "03 — in-app playback"
+     MUSIC (Now Playing): collapse chevron, "NOW PLAYING", overflow. Square
+     artwork (accent gradient + note glyph when there is no art). Title 20 sp,
+     "Artist · Album" secondary. Seek bar with accent→lime gradient, elapsed
+     "1:44" left and remaining "-2:24" right. Controls: shuffle · previous ·
+     accent circular play/pause (56 dp, glow in dark) · next · repeat.
+     Second row: Save · Share · Liked · Queue. "UP NEXT · 5 SONGS" list beneath,
+     current track highlighted with its art, others with a neutral tile.
+       [GAP] Save = add to a local playlist; Liked = toggle a local favourite
+       (accent when on); both are stored on-device only. Share = system sheet.
+       Queue = opens the up-next sheet (drag to reorder, swipe to remove).
+     Playback runs in a MediaSession-backed foreground service: it continues
+     across tab changes, app minimise and screen off, with a media notification
+     (prev/play-pause/next) and audio-focus + becoming-noisy handling.
+     SCRUBBING IS MANDATORY IN EVERY PLAYER [CHANGED] — phone music, phone
+     video, the WebShare audio bar and the in-browser video player all use the
+     SAME seek contract. A progress bar you cannot grab is a progress bar, not a
+     player:
+       · the track is a real control, not decoration: press anywhere on it and
+         playback jumps to that point (tap-to-seek), with a hit area at least
+         24 dp tall even when the drawn track is 4–5 dp;
+       · a KNOB sits at the current position — always visible while dragging,
+         and on hover/focus on the desktop; dragging it scrubs continuously;
+       · while the user is dragging, the clock STOPS driving the bar — playback
+         position follows the thumb, never fights it — and the elapsed/remaining
+         labels update live during the drag, not only on release;
+       · release commits the seek: the native players call MediaPlayer/ExoPlayer
+         seekTo(), the browser sets <video>.currentTime / <audio>.currentTime,
+         which issues a fresh HTTP Range request (§7.6) — the server answers
+         206 Partial Content and playback resumes at the new offset;
+       · keyboard and TalkBack: the bar is a focusable SeekBar / <input
+         type="range"> with ← → stepping 5 s, Home/End jumping to start/end, and
+         an announced value ("2 minutes 43 seconds of 4 minutes 8 seconds");
+       · the ±10 s buttons are real seeks against the same state — they clamp at
+         0 and at the duration and never wrap around;
+       · seeking while paused keeps the player paused and repaints the frame at
+         the new position; seeking past the end ends the item cleanly.
+     VIDEO: black surface, top bar with back, file name, mono "1080p · 144 MB ·
+     24:12", overflow. Tap toggles the chrome. Seek bar with elapsed/duration,
+     controls: replay 10 s · accent circular play/pause · forward 10 s ·
+     VOLUME · CC.
+     VOLUME IS A REAL CONTROL, NOT A MUTE TOGGLE [CHANGED]. Tapping the speaker
+     opens an inline slider (horizontal on phones, 0–100 %) that raises and
+     lowers playback volume continuously; the icon reflects the level (off /
+     low / high), dragging updates it live, and tapping the icon a second time
+     mutes-and-remembers so the previous level is restored on unmute. Hardware
+     volume keys move the same slider while the player is in the foreground.
+     The slider dismisses on the next outside tap or after 3 s idle.
+     CC is enabled only when an embedded or sidecar (.srt) track exists,
+     otherwise dimmed with a "No subtitles" tooltip. Landscape locks to
+     fullscreen; resume position is remembered per file.
+
+6.12 HISTORY — "08 — received · sent"
+     Title "History" + search · filter · clear-all icons. Full-width pill
+     segmented control: [Received | Sent] — the active half is accent filled with
+     near-black text. Rows: type icon tile, middle-ellipsised file name, mono
+     "Ravi's Redmi · 131.1 MB · 15:13", a green ✓ or red ✗ status glyph, and a ⋮
+     overflow (Open · Share · Send again · Remove from history · Delete file).
+     Date group headers: TODAY / YESTERDAY / THIS WEEK / dd MMM.
+     The direction filter is part of the same reactive stream that produces the
+     list — never an external flag that only refreshes on the next unrelated
+     change. Search matches file name AND peer name; filters cover type and
+     status (Completed / Failed / Skipped).
+     "Remove from history" and "Delete file" are two distinct, unambiguous
+     actions. Opening a file that no longer exists shows "File no longer
+     available", never a crash or a silent no-op.
+
+6.13 SETTINGS — "09 — profile · appearance · transfer · system"
+     Profile card: accent letter avatar, "MYA-L10", "Tap to rename · Sunflower
+     avatar". Tapping opens rename + avatar-colour choice.
+     ACCENT COLOUR: five 40 dp circles in the §4.4 order; the selected one gets a
+     ring and a check. Changing it retints the whole app instantly.
+     APPEARANCE:
+       Dark mode          — switch, subtitle "Sunflower hue"
+       Follow system      — switch [GAP]; when ON, "Dark mode" is disabled and
+                            mirrors the current system state
+       Sounds             — switch, subtitle "Connect · fail · success"
+     TRANSFER:
+       Conflict policy    — row → Ask every time / Rename duplicates (default) /
+                            Overwrite / Skip
+       Notifications      — switch, subtitle "Transfer progress"
+       Broadcast peers    — row, subtitle "Maximum 4 phones" (2–8) [GAP/NEW]
+     SYSTEM:
+       Storage access     — "Download · SAF folders" → list of granted trees with
+                            per-entry Remove, + Add a folder, + the optional
+                            all-files-access explanation
+       Battery optimization — "Exemption disabled — tap to request"
+       Logs               — "View · export .txt · clear"
+       Crash reports      — switch, "Local · never uploaded"
+     DIAGNOSTICS:
+       Connection Doctor  — "Wi-Fi · Multicast · Play Services"
+     ABOUT:
+       Replay onboarding  — "Show the tour again"
+       Help & FAQ
+       About              — version, versionCode, licences, "No accounts. No
+                            cloud. No ads."
+     Every switch here must actually be wired to behaviour; a stored-but-unread
+     preference is a defect (this bit us before with Sounds).
+
+6.14 LOG VIEWER — "10 — diagnostics"
+     Toolbar: back, "Logs", trash icon. Chip row: [Export .txt] (accent filled) ·
+     [Errors only] · [Clear]. [Export .txt] writes the file to cache and then
+     fires the SYSTEM SHARE SHEET (ACTION_SEND, text/plain, FileProvider URI,
+     subject "Morsecode log 1.0.0 (1)") so the log can go to Gmail, Drive,
+     WhatsApp, Telegram, Bluetooth, Files or anything else the user has
+     installed [CHANGED]. Writing the file silently — or showing only a toast —
+     is a defect: a log nobody can send is useless. The same chooser is reused
+     by the Files selection bar and by the viewer's Share action. Monospace rows separated by dotted hairlines:
+     time (mono, text/meta) · level (INFO #0EA5E9 / WARN #F59E0B / ERROR #EF4444)
+     · message (wraps). Reference content:
+       09:41:02 INFO  Morsecode 1.0.0 (1) started
+       09:41:02 INFO  Multicast lock acquired
+       09:41:03 INFO  UDP broadcast :33457 sent
+       09:41:04 INFO  Peer discovered: Ravi's Redmi
+       09:41:05 INFO  TCP control :33456 connected
+       09:41:06 WARN  CRC mismatch on chunk seq=0192 — retrying
+       09:41:07 INFO  Chunk seq=0193 verified
+       09:41:12 ERROR Session closed by peer · reason=USER_END
+     Searchable, auto-scrolls to tail unless the user has scrolled up. Export
+     produces ONE .txt beginning with "Morsecode <version> (<versionCode>)" and
+     containing the whole ring buffer plus any stored crash reports.
+
+6.15 CONNECTION DOCTOR — "10 — diagnostics"
+     Title "Connection Doctor". A vertical list of checks, each = status glyph
+     (green ✓ / amber ! / red ✕ — always with text, never colour alone), bold
+     label, mono detail line, tap for an inline fix:
+       ✓ Wi-Fi connected            MY-NETWORK · -42 dBm
+       ✓ Same network as peers      3 peers on 192.168.1.0/24
+       ✓ Multicast lock             Held · beacon every 1200 ms
+       ! Play Services old          Nearby Connections may be slower
+       ✓ Permissions granted        Nearby · Storage · Battery
+       ✕ Battery optimization ON    Transfers may pause in background
+     Also checked: Bluetooth state, Location services (pre-31 context), hotspot
+     state + the STA/AP conflict explanation, and whether :33455/:33456/:33457
+     are free.
+     Footer: [✓ Request battery exemption] (accent-wash) and [⟳ Refresh checks].
+     Reachable from the dashboard "?", Settings → Diagnostics, every Help
+     article, and automatically offered after a 15-second discovery timeout.
+
+6.16 CONSENT DIALOGS — "11 — accept / reject"
+     Centred card over a blurred/dimmed screen, 20 dp radius, 72 dp icon on top.
+       a) Peer: avatar "R", title "Connection request",
+          body "Ravi's Redmi wants to send you files." (peer name in accent),
+          mono "Phone · Wi-Fi LAN · 192.168.1.42",
+          buttons [Reject] (neutral outline) [Accept] (#22C55E filled).
+       b) Browser: blue globe icon, title "Browser wants access",
+          body "A browser session wants to browse your phone.",
+          mono "Chrome · 192.168.1.88", same buttons.
+     Nothing — no listing, no thumbnail, no byte — crosses the wire before
+     Accept. Reject sends a clean REJECT and tears the attempt down. A broadcast
+     prompts each receiver separately. An already-trusted peer in the SAME live
+     session does not re-prompt for a new batch; a new peer always does.
+     Both dialogs also raise a heads-up notification when the app is backgrounded,
+     with Accept/Reject actions. [GAP]
+
+6.17 HELP & FAQ — "12 — how it works"
+     Accordion list, first item expanded:
+       "How does Morsecode work?" → "Two phones on the same Wi-Fi connect
+          directly. If there's no shared network, Nearby Connections uses
+          Bluetooth or Wi-Fi Direct."
+       "Do I need internet?" · "Can I send and receive at the same time?" ·
+       "What is WebShare?" · "Where are my logs?"
+     Plus searchable troubleshooting articles, each ending in a real action
+     button (→ Connection Doctor, → Storage access, → Battery):
+       Phone not found during discovery · Transfer stalls partway through ·
+       Browser can't connect to WebShare · Received APK won't install ·
+       Hotspot won't turn on · Transfer is very slow · Files received but I
+       can't find them · What does Broadcast do?
+
+6.18 NOTIFICATIONS.
+     Channels: "Transfers" (low, ongoing), "Requests" (high, heads-up),
+     "WebShare" (low, ongoing), "Playback" (low, media).
+     The transfer notification shows peer (or "3 phones"), current file, combined
+     progress and Pause / Resume / Cancel actions, and is explained in plain
+     words the first time it appears: it exists to keep the transfer alive,
+     dismissing or force-stopping interrupts it, and it disappears on its own.
+
+6.19 EMPTY AND ERROR STATES. Every list has a friendly empty state (icon, one
+     line, one action). Every failure states what happened AND what to do next
+     ("Connection lost — Retry" / "Access needed to view this folder — Grant
+     access"). A folder that cannot be read because of scoped storage must NEVER
+     render as an empty folder (§12.2).
+
+--------------------------------------------------------------------------------
+7. WEBSHARE — PHONE ↔ BROWSER
+--------------------------------------------------------------------------------
+
+7.1  SERVER.
+     NanoHTTPD bound to 0.0.0.0:33455, started and stopped ONLY by explicit user
+     action (dashboard card pill, or the WebShare screen's Start/Stop).
+     INV-4 (no idle shutdown) [KEPT]: the server stays up until the user stops
+     it. No idle timeout, no auto-teardown, screen-off is never a reason to
+     close, and it never shuts down while a browser session is connected.
+     The address is a bare IP:port with NO token in the URL
+     (http://192.168.1.24:33455). Access control is consent-based: a new browser
+     session sees only a waiting screen until the phone's owner accepts (§6.16b);
+     on accept the server issues a session token that every subsequent API call
+     must carry (header or query param); a request without a valid, unexpired
+     token gets 401. The token dies when WebShare stops or the session is
+     revoked. Sessions are listed on the WebShare screen with a Revoke action.
+     The server runs alongside the foreground service with its own persistent
+     notification showing the URL. Every response carries `Cache-Control:
+     no-store` — the web UI is compiled into the APK and a cached copy of an old
+     build silently breaking against new server logic has bitten us before.
+     Optional hotspot mode (HotspotController): API 26+ uses
+     LocalOnlyHotspotReservation and shows the generated SSID/password as large,
+     monospaced, tap-to-copy text; API 21–25 deep-links to wireless settings,
+     polls for the AP, then reads the gateway (typically 192.168.43.1 — which is
+     why one mock's URL is http://192.168.43.1:33455). If the phone is currently
+     on Wi-Fi, confirm first: "Starting the hotspot will disconnect you from
+     'MY-NETWORK'. Continue?" — STA and AP share one radio on this hardware
+     range. mDNS via NsdManager is a convenience only and always holds a
+     MulticastLock; the raw http://ip:port is always shown as plain text too.
+
+7.2  ENDPOINTS.
+       GET  /                      single-page app (self-contained, no CDN)
+       GET  /api/hello             handshake → pending | accepted | rejected
+       GET  /api/info              device name, model, OS
+       GET  /api/counts            per-category counts + storage used/total
+       GET  /api/files             category | folder | search | sort | cursor | pageSize
+       GET  /api/fs                filesystem browse (path, breadcrumb, entries)
+       GET  /thumbnail             sized, server-cached thumbnails (id + mtime key)
+       GET  /download              streams a file, MUST support Range
+       GET  /download-file         raw file by path
+       GET  /download-folder       streamed ZIP64 of a folder
+       GET  /download-zip          streamed ZIP64 of a selection
+       GET  /video/<name>          the in-browser player page (§7.6)
+       GET  /stream                byte-range media stream for the player
+       POST /upload                chunked upload (§7.7) + small-file multipart
+       GET  /api/upload-status     per-file chunk progress
+       GET  /api/events            SSE: push offers, consent changes, counts
+       POST /api/push-accept       browser accepts a phone→browser push (§7.8)
+     Zip streaming is built through a pipe as it is sent (never fully assembled
+     first), is ZIP64-capable (>4 GB, >65 535 entries), sets the UTF-8 name flag,
+     and aborts generation the moment a broken pipe says the client is gone.
+     /upload writes into the user's chosen destination, inserts into MediaStore
+     where applicable, and returns the ACTUAL bytes written and saved path —
+     never a hardcoded success. The multipart parser's pushback buffer must be
+     at least as large as the read chunk size, or trailing bytes are silently
+     dropped and uploads arrive truncated.
+
+7.3  BROWSER SHELL (matches the WebShare mocks, dark AND light).
+     Left icon rail, 88 px: the app squircle at the top, then Home · Photos ·
+     Videos · Music · Docs · Apps · Files, each with its live count underneath.
+     The active item gets an accent-wash tile. Pinned at the bottom: the live
+     session indicator and [End session]. There is no QR entry [CHANGED].
+     Header bar: device name "MYA-L10" (20 sp bold) with mono
+     "192.168.1.24:33455 · WebShare session" underneath; on the right a green
+     "● Connected" pill and an accent "⇪ Send files" button.
+     Content area on bg/base with 16 px card gaps. Identical token set to the
+     native app (§4.2–4.5); the browser follows the phone's current theme and
+     accent, delivered in /api/info.
+
+7.4  HOME. Five stat cards in a row — 1330 PHOTOS · 88 VIDEOS · 5 MUSIC ·
+     155 DOCS · 34 APPS — each with an accent top-edge highlight, the value in
+     accent 28 px bold and a mono uppercase label; clicking one opens that
+     category. Below: a Storage card, "42.1 GB of 64 GB used" right-aligned, with
+     the three-stop gradient bar. Below that: a dashed-border drop zone, upload
+     glyph in an accent circle, "Upload files to phone", "Drag files here or
+     click to send to phone", and a [Choose files] button.
+
+7.5  CATEGORY PAGES. Shared top row: search input ("Search this category"), a
+     sort dropdown ("Newest first"), and an accent "n selected" counter.
+     PHOTOS/VIDEOS: a left folder panel, ALWAYS PRESENT on both pages
+     [CHANGED] — this is the browser's substitute for the phone's Files tab, and
+     it is where the folder lists the mocks show actually belong (§6.9).
+       Photos panel: All photos 1284 · Camera 812 · Screenshots 241 ·
+         WhatsApp Images 138 · Telegram 62 · Download 31.
+       Videos panel: All videos 88 · Telegram 41 · WhatsApp Video 27 ·
+         Camera 9 · Morsecode 6.
+     Each row is THUMBNAIL + name + count, where the thumbnail is the most
+     recently modified item inside that folder [CHANGED] — a folder list without
+     previews is a list of words, and the whole point of the panel is to let
+     someone recognise an album at a glance. Video folder thumbnails carry the
+     same dark scrim as video tiles. The active row gets the accent wash;
+     selecting a folder filters the grid and the breadcrumb/heading updates. Then a
+     day-grouped grid with a
+     right-aligned "Select all" / "✓ Selected" control per group. Tiles are
+     thumbnails with a circular check top-right (accent when selected) and, for
+     video, a play glyph plus a duration badge. NO filename text under photo or
+     video tiles [KEPT]. Clicking a photo opens an in-page LIGHTBOX — mandatory,
+     not optional [CHANGED]: a dimmed full-window overlay with the full-size
+     image, the filename, "n of N", dimensions and size, ‹ › to walk the album
+     (also ← → keys), a Download button, a Select toggle that feeds the same
+     selection basket, and ✕ / backdrop-click / Esc to close. A grid whose only
+     interaction is selection is a defect — people browse before they download.
+     Clicking a video opens the player page (§7.6).
+     MUSIC: a table — TITLE · ARTIST · DURATION · SIZE — with a real radio/check
+     control per row and a select-all in the header; the selected row is
+     accent-washed. A persistent bottom player bar (art, title/artist, a
+     DRAGGABLE seek bar with a knob — same contract as §6.11, tap-to-seek plus
+     drag, and 
+     elapsed/total, prev, accent pause, next, a volume control identical to the
+     video player's (D14) and an ✕ that fully stops playback, releases the
+     element and dismisses the bar) keeps playing across tab switches (INV-5).
+     The ✕ is mandatory: a player that cannot be closed is a trap, and the audio
+     element must be released, not merely paused.
+     DOCS/APPS: table and icon grid respectively; apps expose "Download APK".
+     FOLDERS ARE FIRST-CLASS SELECTABLE OBJECTS in the file browser [CHANGED]:
+     every row has a checkbox, folders included; a selected folder downloads as
+     a streamed <folder>.zip built on the fly (no temp file, no size limit) and
+     contributes its recursive size to the bar. The Size column shows that
+     recursive size, never a dash. A per-row zip button sits beside "open".
+     FILES: the page IS a file manager — a left QUICK-FOLDER panel beside the
+     listing, never a bare table. The panel is pinned and holds, in order:
+     Internal storage · Download · DCIM · Pictures · Movies · Music · Documents
+     · WhatsApp · Telegram · Morsecode · SD card (only when one is mounted) —
+     WhatsApp and Telegram earn their place because that is where most received
+     media actually lives — each with its icon and,
+     where cheap, an item count; the current root is accent-washed. Beside it a
+     sticky breadcrumb bar "Internal storage / Download"
+     where EVERY segment is clickable (INV-7), then a table NAME · SIZE ·
+     MODIFIED with checkboxes on EVERY row, folders included, a per-row menu
+     (Download / Download .zip for folders · Delete) and folder rows that
+     navigate when their name is clicked.
+     SELECTION IS UNIVERSAL AND EXPLICIT [CHANGED]. Every category page —
+     Photos, Videos, Music, Documents, Apps and Files — has a per-item checkbox
+     AND a "Select all / Clear selection" control in its section header. On
+     media TILES the checkbox is a corner control: ticking it selects, clicking
+     the tile body streams/opens, so you can queue a 4 GB video for download
+     without ever starting playback. In TABLES the checkbox is the first column.
+     FLOATING SELECTION BAR (all categories, appears when n>0): "n selected",
+     the summed size, then [⇓ Download] — plain, one direct request per file,
+     always offered, including for a single file — [⇊ Download .zip] (streamed
+     ZIP64), [Delete] and a Clear control. Offering only the zip is a defect:
+     one file should never have to be unpacked.
+     There is NO "send to phone" control in the browser's selection bar
+     [CHANGED]: everything listed here already lives on the phone, so the button
+     was meaningless. Phone-bound transfers start on the phone; §7.8 covers the
+     reverse direction, browser → phone, and that is an UPLOAD. An empty folder still renders the full
+     chrome (rail, header, breadcrumb) with "No files here" inside the content
+     area only.
+
+7.6  IN-BROWSER VIDEO PLAYER [NEW]. Route /video/<name>. Keeps the rail; a top
+     bar with a back circle, file name and mono "1080p · 144 MB", plus a
+     download button on the right. A large 16:9 black stage with a centred play
+     button, then a DRAGGABLE seek bar (knob, tap-to-seek, live labels, §6.11)
+     whose commit sets <video>.currentTime and therefore issues a new Range
+     request answered with 206, and the same control row as
+     the native player (replay 10 · accent play · forward 10 · volume · CC) —
+     including the real volume slider, bound to the <video> element's .volume
+     and .muted, never a bare mute button (§6.11).
+     Uses <video> against /stream with Range. Closing or navigating away must
+     REMOVE the element from the DOM, not hide it — a hidden <video> keeps
+     playing audio with nothing on screen to stop it.
+
+7.7  UPLOADS (browser → phone). Files are sliced client-side into 4 MB chunks
+     and POSTed sequentially with a file id and chunk index, so pause means
+     "stop sending chunks" and resume means "ask /api/upload-status for the last
+     index and continue" — never restart from zero. Multiple concurrent uploads
+     allowed. Exactly ONE upload progress UI at a time (INV-6): the transfer
+     tray, a collapsible panel listing every in-flight upload/download with its
+     own progress, pause/resume and cancel.
+
+7.8  PUSH (phone → browser) [NEW]. A connected browser session appears in the
+     phone's discovery list as "Office Laptop · WebShare". Choosing it and
+     sending opens an offer: the browser receives an SSE event and shows an
+     incoming card in the transfer tray with [Download] / [Dismiss]; accepting
+     downloads through the same Range-capable endpoint. The phone shows the same
+     TransferRows it uses for any other peer, with a [WEB] badge.
+
+7.9  RESPONSIVE + ACCESSIBILITY. Below 768 px the rail becomes a bottom tab
+     strip, tables collapse to two-line rows that still show the real file name
+     and a type thumbnail, and Photos/Videos keep real gallery thumbnails with
+     individual selection (INV-8). Everything is keyboard operable (Tab, Enter,
+     Space, arrows inside grids/tables), custom controls carry ARIA roles and
+     states, and focus moves into a modal on open and back to the trigger on
+     close. Contrast meets WCAG AA in both themes.
+
+7.10 MEDIA JSON. Every item exposes
+     `date = dateTakenMs > 0 ? dateTakenMs : dateModifiedSeconds * 1000` so the
+     browser sorts by real capture time. Folder/album grouping keys come from
+     the real bucket name or path — NEVER from a content:// authority that is
+     identical for every item, which collapses the whole library into one group.
+
+--------------------------------------------------------------------------------
+8. ARCHITECTURE
+--------------------------------------------------------------------------------
+
+8.1  Package `app.morsecode.android` (§1.1.1):
+
+     MainActivity.kt            single activity, fragment destinations + back stack
+     MorsecodeApp.kt            process init, crash handler, theme bootstrap
+     core/
+       transfer/  TransferEngine (singleton), BroadcastEngine, TransferService,
+                  TransferQueue, SoundFx
+       network/   Transport (interface), LanTransport, NearbyTransport,
+                  WebPeerTransport, Discovery (unified), SessionRegistry
+       media/     MediaLibrary, ThumbnailCache, PlaybackService (MediaSession)
+       webshare/  WebShareController, WebShareServer, HotspotController, WebAssets
+       data/      Prefs, JournalStore, HistoryStore, TrashStore
+       logging/   LogStore (ring buffer + crash reports)
+       storage/   SafStore, Destinations, ZipUtil, Conflicts
+       util/      Integrity, DeviceTier, Fmt, Permissions, ThemeColors, Accent
+       ui/        Ui (dialogs/toasts/tips), RadarView, components from §4.12
+       model/     Models.kt (TransferItem, PeerDelivery, DiscoveredPeer, MediaItem…)
+     di/AppServices.kt          manual service locator
+     feature/
+       dashboard/ · transfer/ (TransferFragment, BroadcastFragment, QueueSheet,
+       adapters) · filemanager/ · webshare/ · history/ ·
+       settings/ (Settings, ConnectionDoctor, LogViewer) · viewer/ (ViewerActivity,
+       MusicPlayerFragment, VideoPlayerActivity) · onboarding/ · help/
+
+8.2  PRINCIPLES.
+     - TransferEngine is the single source of truth for queue and session state.
+       It exposes StateFlows (items, session, peers) and a shared EngineEvent
+       flow (PeerConnected, PeerDisconnected, BatchCompleted, PeerDelivered…).
+       Fragments observe and render; they never own transfer state.
+     - Coordinators are process-scoped. Incoming file handling is owned by the
+       engine/service, never by a screen — a session whose incoming stream is
+       only collected while a fragment is visible will handshake, look connected,
+       and silently receive nothing.
+     - TransportSession abstracts one connected peer: sendFile(item, sha),
+       pauseOutgoing(fileId), cancelTransfer(fileId), close(reason), plus
+       incoming callbacks. Implementations: LanSession, NearbySession,
+       WebPeerSession. The engine is transport-agnostic.
+     - Journal persistence: the outgoing queue and in-progress receives are
+       journaled on EVERY state transition so a crash or force-kill never loses
+       the queue.
+     - Any state the UI must react to is a Flow, never a plain field; and a flow
+       that starts at `false` must be distinguishable from "was true, then
+       ended", so a fresh screen never announces "connection closed".
+     - One-shot events (navigate back, show summary) are delivered through a
+       consumable event wrapper — a replayed LiveData value must never re-fire a
+       navigation.
+     - DeviceTier (§13) scales pre-hash limits, thumbnail sizes, page sizes,
+       thread pools and animation; never functionality.
+
+--------------------------------------------------------------------------------
+9. TRANSFER ENGINE — EXACT SEMANTICS (1:1)
+--------------------------------------------------------------------------------
+
+9.1  ITEM MODEL.
+     TransferItem(id, batchId, direction SENDING|RECEIVING, state, file{displayName,
+     uri, mime, size}, relativePath?, totalBytes, bytesTransferred, speedBps,
+     resumeOffset, retryCount, lastError, peerId?)
+     States: QUEUED → IN_PROGRESS → COMPLETED | SKIPPED | PAUSED | CANCELLED | FAILED
+
+9.2  THE OUTGOING WORKER — the most important loop in the app.
+     Exactly ONE worker coroutine per session picks the first QUEUED send and
+     calls session.sendFile(item, sha).
+     INV-9 NEVER SCROLL THE USER BACK TO THE TOP [CHANGED]. Ticking a checkbox,
+     starting playback, a progress update or any other state change must leave
+     every scroll container exactly where it was — phone lists, the WebShare
+     content pane and the file tables alike. Re-rendering a whole list on each
+     state change is allowed only if the scroll offset is captured and restored
+     (or the update is applied in place). Losing the scroll position after
+     selecting the 40th file is the single most-reported annoyance of this kind
+     of UI and counts as a bug, not a redraw artefact.
+
+     INV-1 NEVER HANG. The worker must never wait forever:
+        (a) session close/disconnect immediately completes ALL pending send
+            waiters with a failure result;
+        (b) every pause/cancel path schedules a 3-SECOND TERMINAL FALLBACK that
+            force-completes the waiter when no transfer update arrives (several
+            OEM stacks never emit a terminal update after a cancelled payload);
+        (c) the await itself is bounded.
+     INV-2 PAUSE/CANCEL NEVER BLOCKS OTHERS. Pausing or cancelling one file
+        affects only that item; the worker returns and picks the next queued file
+        within seconds.
+     INV-3 SESSION RESTART UNSTICKS EVERYTHING. When a session is lost, all
+        IN_PROGRESS and QUEUED sends become PAUSED with "Connection lost" —
+        never stuck, never failed. When a new session is established, all PAUSED
+        sends are automatically re-queued and resumed from resumeOffset.
+
+9.3  OUTCOMES AND RETRY. sendFile returns Completed | SkippedAlreadyPresent |
+     Paused | Cancelled | Failed(error).
+       Failed + session alive → auto-retry up to 3 times, 800 ms apart, then FAILED.
+       Failed + session dead  → PAUSED ("Connection lost") per INV-3.
+       Paused                 → PAUSED, resumeOffset = bytesTransferred.
+     Each file is wrapped in its own try/catch: a failure on file 3 of 6 logs,
+     marks that item FAILED, and continues with 4–6. CancellationException is
+     always rethrown unmodified; nothing else is allowed to reach the coroutine's
+     default handler, which would crash both ends.
+
+9.4  INTEGRITY AND DE-DUPLICATION.
+     Sender SHA-256s files up to PREHASH_LIMIT = 256 MB (cached per item); larger
+     files skip the pre-hash. On META the receiver checks whether an identical
+     file (same sha) already exists at the destination → replies "already
+     present" → sender marks SKIPPED ("identical file already present on
+     receiver"). Every chunk is CRC32-verified on arrival; a CRC mismatch FAILS
+     the file and is never "repaired" by appending — that yields a
+     correctly-sized, silently corrupt file. Partial writes go to
+     `<name>.morsecode.part`, are appended on resume, verified (size always, sha256
+     except on the lowest tier), then atomically renamed to the final name.
+     Orphan `.morsecode.part` files older than 24 h with no journal entry are
+     deleted at startup.
+     On the Nearby path, where the SDK hides chunking, the pre-payload metadata's
+     size is compared on every tier and sha256 additionally except on the lowest.
+
+9.5  CONFLICT POLICY. Evaluated on the RECEIVER, per full relative path (so
+     AlbumA/img1.jpg and AlbumB/img1.jpg never collide), before the first byte
+     hits the destination. Detection order: name → size → sha256 (sha only when
+     needed, and skipped on the lowest tier with a log line).
+     Dialog: [Overwrite] [Skip] [Keep both] + "Apply to all remaining conflicts
+     in this batch". Keep both renames photo.jpg → photo (1).jpg → photo (2).jpg.
+     Default policy = Rename duplicates (Settings, §6.13). A conflict dialog must
+     not block unrelated items in the same batch from progressing.
+
+9.6  BATCH UX. Every picker session is one batch (batchId). On terminal state the
+     engine emits BatchCompleted and the UI shows EXACTLY ONE coalesced summary
+     per batch window, ~2.5 s after the last activity: "N sent, N failed, N
+     skipped — Average speed X MB/s", plus total bytes and elapsed time, with
+     [Retry failed] (only when something failed) and [Done]. Never one popup per
+     file. The summary is derived from the same TransferQueue the live rows used —
+     never recomputed independently. SKIPPED is always reported distinctly from
+     FAILED. Both directions record history through the SAME complete() path: a
+     send that leaves no history row while the receive side has one is a defect.
+
+9.7  RESTART RECOVERY. If an unfinished journal entry exists at launch, show
+     "Resume interrupted transfer?" naming the peer and remaining items, with
+     [Resume] and [Discard] — never silently resume, never silently discard. If
+     the peer is not rediscovered within a short window, offer Discard with a
+     plain explanation instead of hanging.
+
+9.8  CONSENT AND SESSION END. Incoming connection → accept/reject popup (§6.16).
+     Reject = clean REJECT, nothing written. Ending a session asks for
+     confirmation. Minimising never ends a session.
+
+--------------------------------------------------------------------------------
+10. BROADCAST ENGINE — ONE SENDER, MANY RECEIVERS   [NEW]
+--------------------------------------------------------------------------------
+
+10.1 MODEL. A broadcast is ONE TransferQueue fanned out to N PeerDelivery rows:
+       PeerDelivery(peerId, peerName, avatarColor, sessionState, itemStates map,
+                    bytesSent, speedBps, verified, lastError)
+     The queue is authoritative for "what is being sent"; each PeerDelivery is
+     authoritative for "how far that peer has got". The UI never derives a second
+     copy of either.
+
+10.2 FAN-OUT. One independent TransportSession per peer. The source file is
+     opened once per peer (separate FileChannel positions) — do not try to share
+     one stream across sockets. Chunk reads are scheduled round-robin so a slow
+     peer cannot starve the others, with a per-peer send window; the file is
+     considered done for a peer only when THAT peer CRC-verifies it.
+     Peer cap: default 4, user-settable 2–8 (Settings → Transfer). On Nearby the
+     cap is 3 (P2P_STAR) and the UI says "Nearby supports up to 3 phones — the
+     rest will wait". Low-tier devices (§13) cap at 2 and say so.
+
+10.3 INVARIANTS.
+     INV-B1 PEER ISOLATION. A peer that rejects, drops, errors or is cancelled
+       never fails the batch or any other peer. Its rows grey out with a reason
+       and a [Retry peer] action.
+     INV-B2 PER-PEER RESUME. resumeOffset is tracked per (file, peer). A peer
+       that reconnects continues from its own offset; others are unaffected.
+     INV-B3 NO GLOBAL HANG. INV-1/2/3 apply per peer session. The broadcast
+       worker must never block on the slowest peer to start the next file for
+       the fast ones.
+     INV-B4 VERIFY EVERY PEER. "Broadcast complete" may only appear when every
+       accepted peer has CRC/size-verified every file it accepted. If some peers
+       failed, the header reads "Broadcast finished — 2 of 3 phones verified"
+       with the failures listed. [GAP]
+     INV-B5 ONE SUMMARY. One coalesced batch summary on the sender covering all
+       peers, and one ordinary per-batch summary on each receiver.
+
+10.4 STAT FORMULAS (these must match the mocks exactly):
+       PEERS            = number of accepted peers                       (3)
+       BATCH MB         = Σ size of every file in the queue              (212)
+       TO SEND MB       = BATCH MB × PEERS                               (636)
+       MB SENT          = Σ bytesSent across peers (what is on the wire so far)
+       combined throughput = Σ per-peer speedBps                    (14.2 MB/s)
+       deliveries       = files × accepted peers                           (9)
+       FILES EACH       = number of files in the queue                     (3)
+       avg speed        = MB SENT ÷ elapsed seconds
+     While running, the three tiles are PEERS · BATCH MB · TO SEND MB; on
+     completion they are PHONES · FILES EACH · MB SENT. (The mocks label both
+     screens "TOTAL MB" with two different meanings — resolved here, Appendix D.)
+
+10.5 RECEIVER SIDE. A receiver in a broadcast is an ordinary receiving session
+     with `broadcast=true` in HELLO, which only changes the PeerCard subtitle
+     ("Broadcast · Phone · LAN") and the [FROM] badge. Conflict policy, consent,
+     integrity, journaling and history behave exactly as in 1:1.
+
+10.6 HONESTY. If throughput per peer falls below ~40% of the single-peer
+     baseline, the summary card adds "Speed is shared between 3 phones" rather
+     than letting the user think something is broken.
+
+--------------------------------------------------------------------------------
+11. TRANSPORTS AND WIRE PROTOCOL
+--------------------------------------------------------------------------------
+
+11.1 UNIFIED DISCOVERY [CHANGED]. One Discovery component runs every available
+     mechanism at once and publishes ONE deduplicated peer list:
+       - LAN: UDP beacons (below) whenever the phone is attached to any network,
+         router or hotspot;
+       - Nearby: advertise + discover when Play Services are available and the
+         permissions are granted;
+       - WebShare: every accepted browser session is published as a peer.
+     Each peer carries its transport badge and address. The "TRANSPORT" row is a
+     PREFERENCE (Auto / Wi-Fi LAN / Nearby), not a hard switch that hides half
+     the network; Auto prefers LAN whenever the phone has a network, because
+     Nearby never uses the shared infrastructure network — on old hardware it
+     negotiates Bluetooth and is far slower. Manual host:port connect is always
+     available as a third path. After 15 s with nothing found, offer the
+     Connection Doctor and the other transport explicitly.
+
+11.2 LAN TRANSPORT.
+     Discovery : UDP broadcast on port 33457, one announce every 1200 ms
+                 (deviceId, name, appId, protocolVersion, broadcast flag).
+                 A MulticastLock is held while discovering.
+     Data/serve: TCP 33456.
+     Control   : one TCP connection carrying newline-terminated UTF-8 JSON —
+                 HELLO → ACCEPT/REJECT → per-file META {name, relativePath, size,
+                 mime, sha256, resumeOffset} → ACK, plus PAUSE_REQ, RESUME_REQ,
+                 CANCEL, BYE, and PING/PONG keepalive.
+     Data      : a separate TCP connection PER FILE. Per-chunk framing:
+                 magic "MRSC" (4 B) | seq int32 | len int32 | payload | CRC32 int32
+                 Chunk size 256 KB; reject len > 4× chunk size; tcpNoDelay = true;
+                 read timeout 25 s guarded by an idle/progress watchdog.
+     ** CRITICAL FRAMING RULE (regression-guarded) ** The first line (the JSON
+     header) of a DATA connection must be read BYTE BY BYTE from the raw
+     InputStream until '\n'. Never wrap a socket that will carry binary chunks in
+     a BufferedReader before the header is consumed — its 8 KB pre-read swallows
+     the first MRSC frame and produces "chunk magic mismatch — framing slipped".
+     A BufferedReader is permitted only on pure-text branches (HELLO handling).
+     Other rules that each encode a real production defect:
+       - One shared mutex guards every read and every write on the control
+         channel, and it is held across a write-then-read-reply pair as one
+         atomic unit. A "busy" boolean is not sufficient.
+       - Progress and completion advance only AFTER a successful flush().
+       - Never force-cast a Socket to a SocketChannel; getChannel() is null for
+         accept()/connect() sockets. Use buffered streams, or FileChannel
+         transferTo/transferFrom against the stream's channel where available.
+       - One data connection per file; never reuse one across files or across a
+         direction turnaround — a stale socket looks connected and yields a
+         zero-byte file with no error.
+       - Idle is not closed: a read timeout means "nothing happened", never
+         "peer gone". Only an explicit close/reset or a genuine I/O error ends a
+         session.
+     Resume  : the receiver reports its .part length in ACK; the sender seeks
+               there and continues the seq numbering.
+
+11.3 NEARBY CONNECTIONS TRANSPORT.
+     Strategy P2P_STAR with a fixed service id; advertise and discover
+     concurrently. Control messages use the same JSON vocabulary as small byte
+     payloads; files travel as STREAM (or FILE) payloads — do not reimplement
+     chunking here. A small metadata payload (name, size, sha256, relativePath,
+     mime) precedes every file so §9.4's verification is possible.
+     sendFile registers a CompletableDeferred per outgoing file keyed by fileId
+     (outgoingWaiters), maps payloadId → fileId, and translates
+     PayloadTransferUpdate: SUCCESS → Completed, FAILURE → Failed, CANCELED →
+     Paused or Cancelled depending on the flag that was set, IN_PROGRESS →
+     progress.
+     SESSION-END RULE: onTransportDisconnected and close() must FIRST fail every
+     outgoing waiter ("session closed") and clear the pause/cancel/payload maps
+     before tearing anything down. This is what makes INV-1/INV-3 hold.
+     Pause/cancel: send the control message, call cancelPayload, AND schedule the
+     3 s terminal fallback.
+     HONEST COPY: Nearby uses Bluetooth/Wi-Fi Direct, needs Play Services, does
+     not use the router, and cannot pause mid-payload — the UI says "Pauses after
+     the current file" there instead of implying an exact-offset pause it cannot
+     deliver.
+
+11.4 WEB PEER TRANSPORT. A WebPeerSession wraps an accepted browser session so
+     the engine can treat it like any other peer (§7.8). Its sendFile publishes
+     an offer over SSE and completes when the browser's ranged download finishes
+     or times out; pause/cancel revoke the offer.
+
+11.5 MANUAL PAIRING — NO QR ANYWHERE [CHANGED]. The product ships no QR
+     scanner and no QR generator: no QrScanActivity, no camera permission, no
+     ZXing dependency, no /api/qr route, no QR entry in the WebShare browser
+     rail and no QR block on the WebShare phone screen. Pairing by address is
+     the ONLY manual path, and it exists in exactly one place: the [Manual IP]
+     button on the discovery screen (§6.3). It accepts `host`, `host:port` or a
+     pasted `morsecode://host:port`, defaults to port 33456, validates before
+     dialling and reports "Can't reach <host>:<port>" on failure.
+     Everywhere an address is displayed (WebShare screen, WebShare browser
+     header, Connection Doctor) it is large, monospaced and tap-to-copy, with a
+     [Copy] affordance — copying the address is what a QR used to be for.
+     RATIONALE: a scanner is only useful if the product also displays a code to
+     scan; once the code is gone the scanner is a camera permission and a
+     third-party decoder in exchange for nothing. Do not reintroduce either
+     half — if a future release wants pairing codes back, it must add both, on
+     purpose, with its own spec section.
+
+11.6 PROTOCOL VERSIONING. HELLO carries protocolVersion. Mismatch → a readable
+     "This phone runs an older version of Morsecode — update to transfer" rather
+     than a framing error.
+
+--------------------------------------------------------------------------------
+12. STORAGE, DESTINATIONS AND MEDIA LIBRARY
+--------------------------------------------------------------------------------
+
+12.1 ACCESS METHOD BY CONTENT TYPE.
+       Photos/Videos/Music → MediaStore query/insert/update only. Never assume a
+         raw path is writable on API 29+.
+       General files/folders/SD/USB-OTG → Storage Access Framework
+         (ACTION_OPEN_DOCUMENT_TREE + DocumentFile); every grant is persisted
+         immediately with takePersistableUriPermission so nothing is re-asked.
+       Other apps' /Android/data/<pkg> → out of scope, unreachable, never
+         claimed in UI.
+
+12.2 GRACEFUL DENIAL. A folder that cannot be read because of scoped storage
+     must be detected as a DISTINCT condition from "zero children" and must
+     render "Access needed to view this folder — Grant access" with a button
+     that opens SAF scoped to that location. Silently rendering an empty folder
+     is release-blocking (it is indistinguishable from a real empty folder).
+
+12.3 ALL-FILES ACCESS. MANAGE_EXTERNAL_STORAGE is offered only as an explained
+     optional toggle in Settings → Storage access, with a plain-language
+     rationale sheet before the system screen, and only where policy permits.
+     Never at first run, never bundled into the permission flow.
+
+12.4 DESTINATIONS. Default download location is user-selectable. The default is
+     Download/Morsecode, created on first receive (§1.1.1). If the user picks a
+     different folder, everything — receives, "Open folder", the Files tab and
+     the WebShare upload target — follows that choice; the app never writes to
+     two destinations at once. Received media is additionally indexed into MediaStore so
+     galleries see it. "Open folder" on the completion screen opens the
+     destination through the system file viewer, falling back to the in-app
+     Files tab at that path.
+
+12.5 MEDIA LIBRARY. MediaLibrary backs categories PHOTOS / VIDEOS / MUSIC /
+     DOCUMENTS / APPS (+ Ebooks, Archives, APKs, Large files) and folderInfo()
+     (name, count, size) for the folder panels. Apps come from PackageManager
+     (icon, label, APK path, size); declare <queries> for package visibility.
+     INV-9 ORDERING: sort by date-taken falling back to date-modified, as a SQL
+       expression `CASE WHEN DATE_TAKEN > 0 THEN DATE_TAKEN ELSE DATE_MODIFIED *
+       1000 END` with `_ID DESC` as tiebreak, so day headers appear exactly once,
+       in order.
+     INV-10 PAGINATION: never put LIMIT/OFFSET inside the MediaStore sort string
+       (Android 14's MediaProvider rejects it: "Invalid token LIMIT"). Open the
+       cursor, moveToPosition(offset), then read `limit` rows in a do-while.
+       Page size follows DeviceTier.
+     DATE UNITS: DATE_TAKEN is MILLISECONDS; DATE_ADDED and DATE_MODIFIED are
+       SECONDS. Mixing them sends files to 1 Jan 1970 in every gallery. Comment
+       the unit at every call site. Below API 29 never use
+       MediaStore.Images.Media.insertImage() for a received image — it writes no
+       DATE_TAKEN and re-encodes the bitmap, destroying quality and EXIF; insert
+       via ContentResolver.insert() with fully populated ContentValues and stream
+       the original bytes.
+     Lists are cursor/page-backed (10 000-item folders must scroll smoothly on
+     the reference phone); thumbnails load lazily with bind tokens (§6.9.2) and a
+     tier-scaled LRU cache.
+
+--------------------------------------------------------------------------------
+13. DEVICE PERFORMANCE TIERING
+--------------------------------------------------------------------------------
+
+     val isLowEndDevice =
+         Build.VERSION.SDK_INT < 23 ||
+         activityManager.isLowRamDevice ||
+         Runtime.getRuntime().availableProcessors() <= 2
+
+     Applies to: chunk-handling thread pools (cap 2), radar/animation complexity
+     (static ring + text instead of canvas animation), thumbnail decode size and
+     cache, page size, pre-hash limit, post-transfer sha256 (size-only check
+     instead, logged), and the broadcast peer cap (2).
+     It NEVER disables transfer, discovery, broadcast, WebShare, pause/resume,
+     conflict resolution or any other functional capability.
+
+--------------------------------------------------------------------------------
+14. BATTERY, POWER AND OEM RELIABILITY
+--------------------------------------------------------------------------------
+
+14.1 Battery-optimisation exemption is requested with an explanation, never
+     silently and never during the onboarding permission burst. It is offered
+     (a) from Settings → Battery at any time and (b) contextually, once, the
+     first time a transfer starts while the exemption is missing. Declining is
+     respected; the Connection Doctor keeps surfacing it as a warning if a
+     transfer has previously died in a way consistent with a background kill.
+
+14.2 OEM autostart guidance: a Settings article with concrete steps for Xiaomi
+     (MIUI Autostart), Huawei (Protected Apps), Oppo, Vivo and Samsung, ordered
+     with the current Build.MANUFACTURER first but always listing all of them.
+
+14.3 The foreground-service notification is explained the first time it appears
+     (§6.18) and is never left running when nothing is active.
+
+14.4 Before a batch that is large or estimated to be long, if the battery is low
+     and unplugged or Battery Saver is on, show a non-blocking advisory:
+     "Battery is low — this transfer may be interrupted." Proceed / plug in.
+     Advisory only, never a hard block.
+
+14.5 A partial WakeLock, and on LAN/hotspot paths a WifiLock, are held from the
+     first active item until the batch is fully terminal or paused-idle — never
+     acquired at process start and never leaked.
+
+--------------------------------------------------------------------------------
+15. ACCESSIBILITY (functional requirement, part of normal QA)
+--------------------------------------------------------------------------------
+
+15.1 Every icon-only control, thumbnail and status indicator has a meaningful
+     contentDescription ("Pause transfer of holiday_2019.mp4", not "Button").
+     Decorative art is explicitly importantForAccessibility="no".
+15.2 Every interactive control is at least 48 × 48 dp (padding, not bigger art).
+15.3 All text in sp; layouts verified at the largest system font scale with no
+     critical text truncated without a way to reveal it.
+15.4 Colour is never the only signal (§4.13); all state pairs meet WCAG AA on
+     both themes.
+15.5 TalkBack announces progress at sensible intervals (not every 100 ms tick)
+     and an explicit "Transfer complete"; the WebShare UI is fully keyboard
+     operable with managed modal focus (§7.9).
+
+--------------------------------------------------------------------------------
+16. DIAGNOSTICS AND LOGGING
+--------------------------------------------------------------------------------
+
+16.1 The log captures Morsecode's own lines plus crash-relevant platform lines
+     only — never an unfiltered dump of every process.
+16.2 Lines are written to a persistent in-app file (ring buffer), not only to
+     logcat. "Clear" records the moment it happened, deletes the app's own file,
+     and filters anything older from sources it does not own.
+16.3 Export produces one .txt headed "Morsecode <version> (<versionCode>)"
+     containing the log and every stored crash report, shareable through a
+     FileProvider from Settings and from the crash dialog.
+16.4 EVERY handshake step (META sent, ACK/resume received, data connection
+     opened, file start, file complete), every pause/resume transition, every
+     conflict decision, every consent accept/reject, and every per-peer
+     broadcast event is logged WITH A TIMESTAMP at the moment it happens — not
+     summarised afterwards. This is what makes a stall diagnosable in seconds.
+16.5 Any byte or progress figure shown in logs or UI must be read from the real
+     underlying state (e.g. the .part file's actual length), never from a
+     side-counter that some code path forgets to update.
+16.6 Crash reports are captured by an uncaught-exception handler, stored
+     locally, listed in the log viewer, and NEVER uploaded. The Settings switch
+     controls local capture only; its subtitle says "Local · never uploaded".
+
+--------------------------------------------------------------------------------
+17. SECURITY AND PRIVACY
+--------------------------------------------------------------------------------
+
+17.1 No account, no cloud, no telemetry, no ads. The entire network surface is
+     the local network plus Nearby radios.
+17.2 Consent gates: incoming phone connections, each broadcast receiver, and
+     every new WebShare browser session. Nothing is listed, thumbnailed or
+     written before acceptance.
+17.3 Every WebShare API call after /api/hello carries a per-session token;
+     missing/expired → 401. Tokens die with the session or the server.
+17.4 Recent devices store a transport-level id plus a display name. Recency
+     shortens discovery, never consent.
+17.5 Location permission (pre-31) is explained as being required by Android for
+     local radio discovery only; no location value is ever read, stored or sent.
+17.6 There is no stranger-link, temporary-link, relay, or internet-assisted
+     pairing feature anywhere. Do not add one.
+
+--------------------------------------------------------------------------------
+18. ANDROID VERSION MATRIX
+--------------------------------------------------------------------------------
+
+ 21–22  No runtime permissions. Aggressive downsampling
+        and small caches by default.
+ 23     Full runtime-permission flow with in-app rationale first. Active
+        transfers run in a foreground service to survive Doze. Battery-exemption
+        prompt available. ← PRIMARY REFERENCE DEVICE (MYA-L10).
+ 24     Java-8 default collection methods become safe; below this they must be
+        SDK-guarded with a manual fallback.
+ 24–25  Never expose file:// in share intents — FileProvider/content:// only.
+ 26–27  Notification channels mandatory. LocalOnlyHotspotReservation available.
+        REQUEST_INSTALL_PACKAGES flow for the post-receive APK install action.
+ 28     Cleartext blocked by default → networkSecurityConfig for local ranges.
+ 29     Scoped storage begins: MediaStore for media, SAF for files. Wi-Fi can no
+        longer be toggled silently — use Settings.Panel.ACTION_WIFI.
+ 30     Scoped storage enforced; MANAGE_EXTERNAL_STORAGE optional and explained;
+        declare <queries>; /Android/data is unreachable.
+ 31–32  Granular BLUETOOTH_SCAN/ADVERTISE/CONNECT with rationale first.
+ 33     READ_MEDIA_* replaces READ_EXTERNAL_STORAGE; POST_NOTIFICATIONS must be
+        requested before any notification, with rationale first.
+ 34+    Foreground service types declared (dataSync); respect background-start
+        restrictions; predictive back.
+
+--------------------------------------------------------------------------------
+19. BUILD, VERSIONING, RELEASE
+--------------------------------------------------------------------------------
+
+19.1 versionName semver, versionCode monotonic. The first release built from
+     this specification is 1.0.0 (versionCode 1). Bump both on every release.
+     The log header format "Morsecode <version> (<versionCode>)" ties an
+     exported log to an exact build. (Mock log lines showing "1.5.1 (15)" come
+     from the reference deck and are sample content — render 1.0.0 (1).)
+19.2 The Morsecode launcher icon (§4.10) ships in EVERY build, adaptive + legacy
+     + round, at every density. A template icon is a release blocker.
+19.3 CI (GitHub Actions): on push, assemble signed release and debug APKs, run
+     unit tests and the lint gate (§20.8), and publish BOTH APKs as GitHub
+     Release assets. A release is not done until both are downloadable.
+19.4 Size budget: release APK ≈ 6.5 MB, debug ≈ 8 MB; the ≤ 5 MB third-party
+     growth budget is part of this.
+19.5 Where the local environment cannot compile, local tooling is a linter, not
+     a compiler: a green local check never means "it builds". Every change is
+     verified by a full remote build whose real error output is read in full.
+     Build status is read from that specific run's artifact, never inferred from
+     a stale indicator. If CI commits artifacts back to the branch, recover from
+     a rejected push by fetching the remote tip, resetting onto it without
+     discarding local work, reapplying and recommitting — never merging or
+     rebasing through that state.
+
+--------------------------------------------------------------------------------
+20. ENGINEERING RULES AND DEFECT PREVENTION
+     (Each line below is a defect that actually shipped once. Do not re-earn it.)
+--------------------------------------------------------------------------------
+
+20.1 SINGLE SOURCE OF TRUTH, EVERYWHERE.
+     - Tab index drives both the active indicator and the rendered dataset. A
+       tab that looks active while another category's data shows underneath can
+       make someone send the wrong file — release blocker.
+     - Selection has ONE canonical set read by the renderer and by the send
+       queue. Clearing it clears it everywhere, including a queue already handed
+       off. A fresh send screen never shows stale ticks.
+     - TransferQueue is the one source for the queue view, the notification and
+       the batch summary. No derived copies.
+     - Broadcast: the queue owns files, PeerDelivery owns per-peer progress.
+
+20.2 ASYNC INTO RECYCLED VIEWS. Every async load bound to a RecyclerView row
+     carries a bind token verified before the result is applied — photos,
+     videos, apps, music, documents, peer avatars, all of them.
+
+20.3 EVENTS vs STATE. One-shot signals use a consumable wrapper; LiveData
+     replaying a stale value must never re-trigger navigation. Observable
+     connection state must distinguish "never connected" from "was connected,
+     now closed".
+
+20.4 EXPLICIT INTENT IN NAVIGATION. Screens receive their purpose as an
+     argument; nothing is inferred from incidental state.
+
+20.5 REACHABILITY. A helper written for an edge case is not a fix until the
+     calling path actually reaches it — verify the earlier `return` no longer
+     short-circuits past it.
+
+20.6 HONEST CAPABILITY. Never label something the transport cannot do (exact
+     pause on Nearby, simultaneous STA+AP, access to another app's sandbox,
+     "instant" anything). Say what will really happen.
+
+20.7 CROSS-MODULE RULES (dormant while the build is single-module; binding the
+     moment it is split): shared resources live in the shared module; a module
+     that injects from another declares a direct dependency on it; making a
+     function `suspend` propagates to every caller in the same change.
+
+20.8 LINT GATE (must run in CI and fail the build):
+     - unresolved resource references from the referencing module's view;
+     - Java-8 default collection methods without an SDK_INT >= 24 guard;
+     - more than one companion object per class; nested data classes inside
+       inner class bodies; coroutine extensions used without their import;
+     - interactive views without contentDescription (or an explicit decorative
+       marker); touch targets under 48 dp;
+     - hardcoded hex colours in layouts/Kotlin outside the token file;
+     - user-visible string literals outside strings.xml.
+
+20.9 KOTLIN/LANGUAGE CONSTRAINTS. No nested data class in an inner class body;
+     at most one companion object; every coroutine extension explicitly
+     imported; no NDK anywhere in the transfer engine (the bottleneck is I/O,
+     not the JVM).
+
+20.10 PERFORMANCE AS CORRECTNESS. Category counts that take minutes, a list that
+     stutters at 10 000 items, a zip download that shows nothing for 30 s while
+     the archive is built in memory — all are defects, not "inherent".
+
+--------------------------------------------------------------------------------
+21. TEST PLAN
+--------------------------------------------------------------------------------
+
+21.1 AUTOMATED UNIT TESTS (must ship in the same change as the logic):
+     resume-offset math · CRC/MRSC framing encode+decode · queue state machine
+     (including pause/cancel/retry transitions) · conflict-resolution decisions
+     (all four policies + apply-to-all) · broadcast stat formulas (§10.4) ·
+     tab/selection state machines · Fmt size/speed/duration rendering ·
+     MediaStore date-unit conversion · chunked-upload index math.
+
+21.2 MANDATORY REAL-DEVICE MATRIX. No change to the engine, control channel or
+     session lifecycle may be called "working" on the strength of code review.
+     Run all of this on two physical devices (one being the MYA-L10):
+      1  single small file (under one chunk), one direction
+      2  single large file (many chunks), one direction
+      3  multi-file batch, one direction
+      4  full turnaround: A→B completes, then B→A on the SAME session
+      5  receiver idle > 30 s mid-session — session must survive
+      6  cancel mid-transfer from the screen AND from the notification
+      7  minimise during a send, navigate away, return — uninterrupted
+      8  one deliberately unreadable file in a batch — the rest still complete
+      9  pause mid-file, wait, resume — completes and verifies, on both
+         transports, judged against each transport's real capability
+     10  deliberate filename conflict — Overwrite / Skip / Keep both /
+         Apply-to-all each behave correctly and produce byte-correct files
+     11  folder send both as ZIP and as Files — structure reconstructed exactly
+     12  force-kill mid-batch, relaunch — "Resume interrupted transfer?" appears
+         and Resume continues from the persisted offsets
+     13  BROADCAST: 3 receivers, one rejects, one drops mid-file and reconnects,
+         one completes — the batch still finishes, the reconnecting peer resumes
+         from its own offset, and the summary counts are exactly right
+     14  theme switch (light/dark/system) and accent change mid-transfer — no
+         state loss, no flicker of the wrong colours
+     15  WebShare with a laptop AND a second phone browser, dark and light
+     A change is "confirmed" only after this matrix passes on real hardware and
+     the person who requested the fix verifies it. "Shipped" and "confirmed" are
+     different states and must be reported as different states.
+
+--------------------------------------------------------------------------------
+22. ACCEPTANCE CRITERIA — the build is done only when ALL pass
+--------------------------------------------------------------------------------
+
+A1   Two phones on the same Wi-Fi: discovery defaults to LAN and a 144 MB video
+     moves at Wi-Fi speed (not Bluetooth speed). Nearby peers appear in the SAME
+     list with a Nearby badge and also connect.
+A2   Pause or cancel one file mid-transfer → the other queued files continue and
+     complete; nothing is stuck "Queued"; no restart needed.
+A3   End a session mid-transfer, immediately start a new one → the interrupted
+     file resumes or re-queues automatically; new sends start at once.
+A4   WebShare stays up after 30+ minutes idle, with the screen off, and while a
+     browser is connected; it stops only when the user stops it.
+A5   A browser opening the URL triggers the accept/reject popup; rejected gets
+     nothing; accepted gets the full UI and a token-guarded API.
+A6   LAN transfer never fails with "chunk magic mismatch" (byte-by-byte header
+     read present and covered by a unit test).
+A7   Photo day groups appear once, in order; Android 14 paginates with no
+     "Invalid token LIMIT"; received files carry correct DATE_TAKEN units.
+A8   The receiver sees ONE summary per batch, never one per file, and SKIPPED is
+     reported separately from FAILED on both sides.
+A9   BROADCAST to 3 phones: per-peer rows update independently, a rejecting or
+     dropping peer never harms the others, "Broadcast complete / All 3 phones
+     verified" only appears after every peer verified, and the tiles read
+     3 PEERS · 212 BATCH MB · 636 TO SEND MB then 3 PHONES · 3 FILES EACH ·
+     636 MB SENT with 9 deliveries.
+A10  The full flow works on Android 6 (API 23): onboarding, pairing, send,
+     receive, broadcast, resume, WebShare, viewer, players, export.
+A11  LIGHT AND DARK both render every screen correctly, the accent picker
+     retints the whole app (and the WebShare page) instantly, and no screen
+     contains a hardcoded hex value.
+A12  WebShare: no filename text under photo/video tiles; folder panels
+     browsable; the music player survives tab switches and can be closed;
+     exactly one upload progress UI; the Files breadcrumb is sticky with every
+     segment clickable; the in-browser video player streams with Range and is
+     removed from the DOM on close.
+A13  Mobile browser: Files shows real names and type thumbnails; Photos/Videos
+     show real gallery thumbnails with individual selection.
+A14  Chunked browser uploads pause and resume from the last received chunk, and
+     report the real byte count written.
+A15  The launcher icon is the Morsecode logo; crash capture and .txt export work
+     and carry the version header.
+A16  Permission list matches §3.5 exactly; no stranger-link feature exists
+     anywhere; no analytics or network call leaves the local subnet (verify with
+     a proxy/airplane-mode test).
+A17  Accessibility: TalkBack can complete a send end to end, every control has a
+     description, nothing is under 48 dp, and the largest font scale truncates
+     nothing critical.
+A18  All strings escaped and unique; lint gate green; unit tests green; signed
+     release + debug APKs published as release assets.
+A19  IDENTITY: `grep -ri "morselink" .` over the whole repository — source,
+     resources, manifest, Gradle, CI config, WebShare assets and the generated
+     APK's strings — returns NOTHING. The launcher label is "Morsecode"; the
+     applicationId and root package are app.morsecode.android; the build reports
+     1.0.0 (1); the chunk magic is "MRSC";
+     partial downloads use `.morsecode.part`; received files land in
+     Download/Morsecode; no code path reads or writes a legacy format. The
+     WebShare page title, the notification titles and the exported log header
+     all read "Morsecode".
+
+A20  WebShare Music: press ✕ on the player → audio stops within 200 ms, the
+     element is released (no background buffering, no media-session entry) and
+     the bar disappears; moving between category pages does not resurrect it.
+     Pressing play on any row brings it back at the top of that track.
+A21  WebShare selection: on EACH of Photos, Videos, Music, Documents, Apps and
+     Files, ticking an item raises the bar with the live count and the summed
+     size; "Select all" ticks the whole page and flips to "Clear selection";
+     [Download] fetches the files directly (one request each, one plain download
+     for a single file) and [Download .zip] streams a single ZIP64 archive.
+     Ticking a video tile NEVER starts playback; clicking the tile body still
+     streams it.
+A22  Every folder row in the Photos and Videos panels shows a thumbnail of its
+     newest item, generated from the same thumbnail cache as the grid; an empty
+     folder shows a neutral placeholder and never a broken image. Quick access
+     lists WhatsApp and Telegram.
+A23  On the phone, with nothing selected, tapping a video opens the player and
+     tapping a track starts it. After one long-press anywhere, a single tap
+     toggles selection on Photos, Videos, Music and Apps alike, the tick is
+     visible on every item without scrolling into a menu, and the Send button
+     shows both the count and the summed bytes for a mixed selection.
+
+A24  Phone picker → select 2 items → [Send]: the app navigates to the Transfer
+     screen, both items are visible as queued/sending rows with live progress,
+     the selection is empty and the selection bar is gone, and a snackbar names
+     the peer. Returning to the picker shows nothing selected.
+A25  Phone Files → "Internal storage" opens a real listing; a folder can be
+     ticked, the bar counts it as one item with its recursive size, and [Send]
+     queues it as <folder>.zip. WebShare's file browser does the same over HTTP.
+A26  Logs → [Export .txt] raises the system share sheet with the user's own apps
+     (Gmail/Drive/WhatsApp/Telegram/Bluetooth/Files); picking one hands over a
+     readable .txt whose first line is "Morsecode 1.0.0 (1)".
+A27  WebShare Photos: clicking any thumbnail opens the lightbox with the correct
+     photo, ‹ › moves through the album, Select adds it to the basket, ✕ and a
+     backdrop click close it. The browser's selection bar contains no
+     "send to phone" control anywhere.
+
+A28  Connect → [Broadcast to several phones] lands on DISCOVERY in multi-select,
+     not on the sender. Picking two phones and confirming opens the sender with
+     both peers at 0 % and a snackbar naming the count; picking one is refused.
+A29  Files → Photos: tapping a thumbnail opens the viewer showing THAT photo
+     (name, index "5 of 15", size) with ‹ › walking the list; tapping its circle
+     selects instead. Files → Videos behaves the same into the player, whose
+     title, size and duration match the tapped clip.
+A30  Files → Files shows an address bar; tapping "Documents", "Download" or
+     "Internal storage" opens a listing whose address bar reads
+     /storage/emulated/0/<name>, whose segments navigate, and whose rows —
+     folders included — can be ticked.
+A31  Scroll a long list (phone or WebShare) to the middle, tick an item: the
+     view does not move. Verified on WebShare Photos, Videos, Music, Documents,
+     Apps and Files, and on all five phone tabs.
+
+A32  In all four players (phone music, phone video, WebShare audio bar,
+     in-browser video) a tap at 75 % of the track jumps to 75 % of the duration,
+     a drag scrubs continuously with the labels following the thumb, the clock
+     does not fight the drag, release commits the seek (206 Range in the
+     browser), and ±10 s clamps at both ends. Verified paused and playing.
+
+A33  Photo viewer: the image fills the frame; dragging left/right moves the deck
+     with the finger and commits past ~22 %, snapping back below it; the dots
+     follow; there are no ‹ › buttons on the phone; ← → work on a keyboard; and
+     the Send FAB queues that exact file and lands on the Transfer screen.
+
+A34  Files → sort icon → "Size · smallest first" re-orders Photos, Videos,
+     Music, Apps and the internal-storage listing (folders still first), the
+     choice is echoed under the tab strip, and it survives tab switches.
+A35  Resize/rotate through 320 dp, 360 dp, 480 dp, 600 dp and 840 dp in both
+     orientations: no horizontal scrollbar anywhere, no clipped control, the
+     five tabs always span the full width, grids re-span instead of stretching,
+     and selection/scroll/playback state survives every configuration change.
+     The same sweep on the WebShare site in a phone browser.
+
+--------------------------------------------------------------------------------
+23. DEFINITION OF DONE
+--------------------------------------------------------------------------------
+All 19 acceptance criteria pass on the Android 6 reference phone AND a current
+Android device, the real-device matrix (§21.2) passes, CI is green, and signed
+release + debug APKs are attached to the GitHub release.
+
+================================================================================
+APPENDIX A — STRING TABLE (exact user-visible copy)
+================================================================================
+Onboarding
+  "Send files without the internet" / "Direct phone-to-phone transfer over Wi-Fi
+   or Bluetooth. No cloud. No accounts. No ads." / "Continue" / "Skip"
+  "Permissions we need" / "Nearby devices to find peers. Storage to read and
+   save files. Battery exemption to keep transfers alive when the screen is
+   off." / "Grant permissions" / "Not now"
+  "Or use a browser" / "Start WebShare and any laptop on the same network can
+   browse, download, and upload from your phone." / "Continue" / "Skip"
+  "You're all set" / "Tap Send to choose files or Receive to listen. Everything
+   stays on your local network." / "Open Morsecode" / "Replay tour"
+Connect
+  "Connect" · "3 devices nearby" · "Scanning the local network" · "Send" ·
+  "Receive" · "Broadcast to several phones" · "WebShare · PC" · "ON"/"OFF" ·
+  "RECENT DEVICES" · "Clear" · badges "LAN" "WEB" "NEARBY"
+Send / discovery
+  "Send files" · "Searching for devices" · "Look for peers on the same Wi-Fi
+  network" · "TRANSPORT" / "Wi-Fi LAN" · "QUEUE" / "3 files · 152 MB" ·
+  "DISCOVERED" · "Refresh" · "Connect" · "Manual IP" · "Copy address" ·
+  "Address copied" · "Can't reach %1$s:%2$d" ·
+  "No devices found yet"
+Transfer
+  "Sending" · "Receiving" · "Sending back · 2 files" · "Pause all" · "Pause" ·
+  chips "SENDING" "QUEUED" "PAUSED" "RECEIVING" "RECV" "DONE" "FAILED"
+  "SKIPPED" "QUEUE" · "Batch in progress" · "1 sending · 1 queued · 1 paused —
+  avg 6.2 MB/s" · "✓ Batch complete" · "3 received · 0 failed · 1 skipped — avg
+  8.4 MB/s" · "CRC verified" · "resume 39.7 MB" · "waiting" ·
+  action bar "Choose" "Queue" "Pause" "Minimize" "End"
+Receive
+  "Listening for senders" · "Keep this screen open. Anyone on your network can
+  send files — you can queue files to send back too." · "BROADCASTING AS" ·
+  "TRANSPORT" / "Wi-Fi LAN · BT" · "PORT" / "33456"
+Queue sheet
+  "Queue · 3 items" · "Send now" · "Remove" · "Resume" · "Retry" · "Cancel" ·
+  "Clear completed" · "Retry all failed"
+Broadcast
+  "Broadcasting" · "⇶ Broadcasting to 3 phones" · "1 broadcasting · 2 queued —
+  combined throughput 14.2 MB/s" · "PEERS" "BATCH MB" "TO SEND MB" ·
+  "Broadcast · Phone · LAN" · "FROM" · "Receiving from MYA-L10" ·
+  "✓ Broadcast complete" · "All 3 phones verified" · "×3" · "Delivered to" ·
+  "9 deliveries · 0 failed · 0 skipped — avg 14.2 MB/s" · "PHONES" "FILES EACH"
+  "MB SENT" · "Retry peer" · "Speed is shared between 3 phones"
+Complete (receiver)
+  "Complete" · "Received · 3 files" · "Open folder" · "DONE"
+Files
+  "Files" · tabs "Photos" "Videos" "Music" "Apps" "Files" · "Today · 6 items" ·
+  "Yesterday · 9 items" · "CATEGORIES" · "Documents" "Ebooks" "Archives" "APKs"
+  "Large files" · "FOLDERS" · "Download" "Internal storage" "+ Add a folder" ·
+  (the folder names "All videos" / "Telegram" / "WhatsApp Video" / "Camera" /
+  "Morsecode" belong to the WebShare folder panels, §7.5 — not to this tab) ·
+  "✓ Send (2) · 357.1 KB" · "Share" "Delete" "Cancel" · "Unknown artist"
+Viewer / players
+  "4032 × 3024 · 4.1 MB" · "NOW PLAYING" · "UP NEXT · 5 SONGS" · "Save" "Share"
+  "Liked" "Queue" · "1080p · 144 MB · 24:12" · "No subtitles" · "Volume" ·
+  "Muted" · "Volume 70%"
+History
+  "History" · "Received" "Sent" · "TODAY" "YESTERDAY" · "Open" "Share"
+  "Send again" "Remove from history" "Delete file" · "File no longer available"
+Settings
+  "Settings" · "Tap to rename · Sunflower avatar" · "ACCENT COLOUR" ·
+  "APPEARANCE" · "Dark mode" / "Sunflower hue" · "Follow system" ·
+  "Sounds" / "Connect · fail · success" · "TRANSFER" · "Conflict policy" /
+  "Rename duplicates" · "Notifications" / "Transfer progress" · "Broadcast
+  peers" / "Maximum 4 phones" · "SYSTEM" · "Storage access" / "Download · SAF
+  folders" · "Battery optimization" / "Exemption disabled — tap to request" ·
+  "Logs" / "View · export .txt · clear" · "Crash reports" / "Local · never
+  uploaded" · "DIAGNOSTICS" · "Connection Doctor" / "Wi-Fi · Multicast · Play
+  Services" · "ABOUT" · "Replay onboarding" / "Show the tour again" ·
+  "Help & FAQ"
+Diagnostics
+  "Logs" · "Export .txt" "Errors only" "Clear" ·
+  "Connection Doctor" · "Wi-Fi connected" · "Same network as peers" ·
+  "Multicast lock" · "Play Services old" / "Nearby Connections may be slower" ·
+  "Permissions granted" / "Nearby · Storage · Battery" · "Battery optimization
+  ON" / "Transfers may pause in background" · "✓ Request battery exemption" ·
+  "⟳ Refresh checks"
+Consent
+  "Connection request" · "Ravi's Redmi wants to send you files." ·
+  "Phone · Wi-Fi LAN · 192.168.1.42" · "Browser wants access" · "A browser
+  session wants to browse your phone." · "Chrome · 192.168.1.88" ·
+  "Reject" "Accept"
+Help
+  "Help" · "How does Morsecode work?" / "Two phones on the same Wi-Fi connect
+  directly. If there's no shared network, Nearby Connections uses Bluetooth or
+  Wi-Fi Direct." · "Do I need internet?" · "Can I send and receive at the same
+  time?" · "What is WebShare?" · "Where are my logs?"
+WebShare (browser)
+  "● Connected" · "⇪ Send files" · "WebShare session" · "PHOTOS" "VIDEOS"
+  "MUSIC" "DOCS" "APPS" · "Storage" / "42.1 GB of 64 GB used" · "Upload files to
+  phone" / "Drag files here or click to send to phone" / "Choose files" ·
+  "Search this category" · "Newest first" · "4 selected" · "Select all" ·
+  "✓ Selected" · "⇓ Download" · "⇊ Download as zip" · "Clear" ·
+  "TITLE" "ARTIST" "DURATION" "SIZE" · "NAME" "SIZE" "MODIFIED" ·
+  "No files here" · "Waiting for approval on the phone…"
+
+================================================================================
+APPENDIX B — COLOUR QUICK CARD
+================================================================================
+ accent/sunflower  #FACC15   accent/pressed #EAB308   accent/deep   #A16207
+ accent options    #FACC15 · #84CC16 · #EA580C · #8B5CF6 · #0EA5E9
+ success           #22C55E   receiving #A78BFA on #412D6D
+ warning/paused    #F59E0B   error/end #EF4444        info #0EA5E9
+ dark  bg #0B0B0B · card #141414 · raised #1A1A1A · line #1F1F1F
+       text #F5F5F4 / #A1A1AA / #71717A
+ light bg #EEEDE7 · card #FFFFFF · raised #F5F4EE · line #E4E1D8
+       text #141310 / #6B6862 / #8A867E
+ peer avatars #F59E0B · #8B5CF6 · #0EA5E9 · #22C55E · #EF4444 · #EC4899
+ progress gradient accent → #84CC16 ; complete #22C55E
+ storage bar #FACC15 → #EA580C → #22C55E
+ logo gradient #EF7D0F → #F5A712 → #FBBF24
+
+================================================================================
+APPENDIX C — MOCK INDEX (by the caption printed on each sheet)
+================================================================================
+ Every sheet exists twice: dark (a-series PNG) and light (b-series PNG).
+ UI kit deck
+   01 Onboarding — first launch (replayable)              → §6.1
+   02 Connect · Dashboard — radar · send/receive · recent → §6.2
+   03 Transfer · 4 states — send/receive · before/after   → §6.3–6.6
+   04 Queue sheet — full outgoing queue                   → §6.7
+   05 Files — photos · videos · music · apps · files      → §6.9
+   06 Viewer — fullscreen image                           → §6.10
+   07 Media players — music · video                       → §6.11
+   08 History — received · sent                           → §6.12
+   09 Settings — profile · appearance · transfer · system → §6.13
+   10 Log viewer & Connection Doctor — diagnostics        → §6.14, §6.15
+   11 Consent popups — accept / reject                    → §6.16
+   12 Help & FAQ — how it works                           → §6.17
+   13 WebShare · Home — landing · stats · upload          → §7.4
+   14 WebShare · Videos — folder sidebar · selection bar  → §7.5
+   15 WebShare · Music & Files — player · breadcrumb      → §7.5
+   16 WebShare · Files — breadcrumb navigation            → §7.5
+ Broadcast deck
+   01 Topology — one-to-many                              → §10.1
+   02 Sender · broadcasting to 3 phones — the hub         → §6.8.2
+   03 Receivers · all getting the same files              → §6.8.3
+   04 All peers complete — batch summary on every phone   → §6.8.4–6.8.5
+ Summary deck
+   02 Files · Photos & Videos — images only in photos · folders in videos → §6.9
+   03 Media Players — in-app music & video playback       → §6.11
+   05 Connect & Settings — dashboard · preferences        → §6.2, §6.13
+   06 WebShare · Video player — in-browser playback       → §7.6
+ logo.PNG — launcher icon at 4 sizes                      → §4.10
+
+================================================================================
+APPENDIX D — GAPS FOUND IN THE MOCKS AND THE DECISION TAKEN
+================================================================================
+ G1  Broadcast stat tiles were labelled "TOTAL MB" on both the in-progress sheet
+     (212 = batch size) and the completion sheet (636 = aggregate). Renamed to
+     BATCH MB / TO SEND MB while running and PHONES / FILES EACH / MB SENT on
+     completion. Formulas fixed in §10.4.
+ G2  One receive sheet shows a single summary line mixing "3 received" with a
+     "Sending back" section. Split into "In:" and "Out:" lines (§6.6).
+ G3  The Settings sheet shows only a "Dark mode" switch, but the product needs
+     "Follow system". Added as a second switch that disables and mirrors the
+     first (§6.13).
+ G4  Several Files sheets show only four tabs; others show five. Five tabs is
+     canonical: Photos · Videos · Music · Apps · Files (§6.9).
+ G5  No mock shows how a broadcast is STARTED. Defined: Send → long-press /
+     overflow → "Broadcast to several phones", plus multi-select in discovery
+     (§6.3, §6.8.1).
+ G6  No mock shows peer rejection or failure during a broadcast. Defined:
+     greyed row + reason + [Retry peer]; header degrades to "Broadcast finished
+     — 2 of 3 phones verified" (INV-B4).
+ G7  No maximum peer count is shown. Default 4, range 2–8, Nearby 3, low-tier 2,
+     exposed in Settings (§10.2, §6.13).
+ G8  The Viewer's five bottom actions are unlabelled. Defined as Share · Edit ·
+     Delete · Info · Send, with Edit hidden when no ACTION_EDIT handler exists
+     (§6.10).
+ G9  The music player shows both "Save" and "Liked". Defined: Save = add to a
+     local playlist; Liked = local favourite toggle. Both on-device only (§6.11).
+ G10 The WebShare video player mock uses the hotspot address 192.168.43.1 while
+     the rest use 192.168.1.24. Both topologies are supported; the URL shown is
+     always whatever address the server is actually bound to (§7.1).
+ G11 "Office Laptop · WebShare" appears in the phone's discovery list, implying
+     phone → browser push, which had no protocol. Defined in §7.8 (SSE offer +
+     ranged download) and §11.4 (WebPeerTransport).
+ G12 The mocks show a QR entry in the WebShare rail, a QR block on the WebShare
+     phone screen and a [Scan QR] button on the discovery screen. DECIDED
+     (product direction, overrides the artwork): QR is removed from the product
+     entirely — scanner, generator, route, rail entry and buttons (§11.5).
+     Pairing by address happens in ONE place, [Manual IP] on the discovery
+     screen, and every displayed address is tap-to-copy instead. Mock frames
+     showing a QR are stale artwork, like the wordmark (§0.3.1).
+ G13 The CC button in both video players had no defined source. Defined:
+     embedded or sidecar .srt only, otherwise disabled with "No subtitles".
+ G14 The mock decks show device frames, deck captions and a Dark/Light pill.
+     These are presentation chrome and must not be implemented (§0.4).
+ G15 Product naming and identity: the mock deck and both reference drafts were
+     drawn for an earlier product, "MorseLink" (applicationId
+     com.morselink.app, 1.5.x). This is a separate, greenfield project. DECIDED:
+     the product, repo, package, wire magic, URL scheme, temp-file suffix and
+     media folder are all "morsecode" (§1.1.1); the first build is 1.0.0 (1);
+     there is no installed base, so no migration, no legacy scheme, no legacy
+     .part handling and no cross-product interop requirement exists — and none
+     may be invented. The mocks' "MorseLink" wordmark and their "1.5.1 (15)"
+     sample log line are stale artwork, not requirements (§0.3.1). A19 is the
+     acceptance criterion.
+================================================================================
+END OF SPECIFICATION
+================================================================================
