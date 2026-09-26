@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark theme deltas. Dark-mode cards carry the hairline border only — never a shadow (§4.3). -->
+<resources>
+    <style name="Theme.Morsecode" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorBgBase">@color/bg_base</item>
+        <item name="colorSurfaceCard">@color/surface_card</item>
+        <item name="colorSurfaceRaised">@color/surface_raised</item>
+        <item name="colorSurfacePressed">@color/surface_pressed</item>
+        <item name="colorHairline">@color/hairline_divider</item>
+        <item name="colorTextPrimary">@color/text_primary</item>
+        <item name="colorTextSecondary">@color/text_secondary</item>
+        <item name="colorTextMeta">@color/text_meta</item>
+        <item name="colorScrimOverlay">@color/scrim_overlay</item>
+
+        <item name="colorAccentMain">@color/accent_sunflower</item>
+        <item name="colorAccentPressed">@color/accent_sunflower_pressed</item>
+        <item name="colorAccentDeep">@color/accent_sunflower_deep</item>
+        <item name="colorInkOnAccent">@color/ink_on_accent</item>
+
+        <item name="cardElevation">@dimen/card_elevation_dark</item>
+
+        <item name="colorPrimary">@color/accent_sunflower</item>
+        <item name="colorPrimaryDark">@color/bg_base</item>
+        <item name="colorAccent">@color/accent_sunflower</item>
+        <item name="android:colorBackground">@color/bg_base</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:windowBackground">@color/bg_base</item>
+        <item name="android:statusBarColor">@color/bg_base</item>
+        <item name="android:navigationBarColor">@color/bg_base</item>
+    </style>
+</resources>

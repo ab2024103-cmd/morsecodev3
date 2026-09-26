@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.8 SPACING, SHAPE, ELEVATION. Base unit 8 dp. -->
+<resources>
+    <dimen name="space_1">8dp</dimen>
+    <dimen name="space_2">16dp</dimen>
+    <dimen name="space_3">24dp</dimen>
+    <dimen name="space_4">32dp</dimen>
+    <dimen name="space_half">4dp</dimen>
+
+    <dimen name="screen_padding">16dp</dimen>
+    <dimen name="list_row_vertical_padding">12dp</dimen>
+
+    <dimen name="radius_card">16dp</dimen>
+    <dimen name="radius_sheet">20dp</dimen>
+    <dimen name="radius_dialog">20dp</dimen>
+    <dimen name="radius_chip">8dp</dimen>
+    <dimen name="radius_thumbnail">10dp</dimen>
+    <!-- Primary buttons are rectangular-rounded at 14 dp, NOT a pill (§4.8). -->
+    <dimen name="radius_button">14dp</dimen>
+
+    <dimen name="hairline">1dp</dimen>
+    <!-- Minimum touch target everywhere, achieved with padding (§4.8, §15.2). -->
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="icon_size">24dp</dimen>
+    <dimen name="icon_stroke">2dp</dimen>
+
+    <dimen name="card_elevation_light">2dp</dimen>
+    <dimen name="card_elevation_dark">0dp</dimen>
+
+    <!-- §4.14: grids use a target cell width, never a hard-coded span. -->
+    <dimen name="grid_cell_target">116dp</dimen>
+    <dimen name="grid_gap">4dp</dimen>
+    <!-- Rows, sheets and dialogs cap their width on wide screens (§4.14). -->
+    <dimen name="content_max_width">640dp</dimen>
+</resources>

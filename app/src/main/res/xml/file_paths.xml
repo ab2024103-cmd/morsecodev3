@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider roots. Never expose file:// in a share intent (§18, API 24–25):
+  the log export (§6.14), the Files selection bar and the viewer Share action
+  all hand over content:// URIs from here.
+-->
+<paths>
+    <cache-path
+        name="exports"
+        path="exports/" />
+    <files-path
+        name="logs"
+        path="logs/" />
+    <files-path
+        name="crash"
+        path="crash/" />
+    <external-path
+        name="external"
+        path="." />
+    <external-files-path
+        name="external_files"
+        path="." />
+</paths>

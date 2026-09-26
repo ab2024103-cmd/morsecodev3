@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §4.10 LOGO. The black Morse glyph: three heavy vertical bars on the left, six
+  dots in a 2 x 3 grid on the right, one long horizontal bar underneath.
+  Drawn inside the 108 x 108 adaptive viewport, within the 72 dp safe zone.
+  The logo NEVER takes the accent colour.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- three heavy vertical bars -->
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M21,33.2h6.1v26.9h-6.1z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M32.6,33.2h6.1v26.9h-6.1z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M44.2,33.2h6.1v26.9h-6.1z" />
+
+    <!-- six dots, 2 rows x 3 columns -->
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M57.6,40.85a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M69.2,40.85a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M80.8,40.85a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M57.6,52.45a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M69.2,52.45a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M80.8,52.45a3.05,3.05 0 1,0 6.1,0a3.05,3.05 0 1,0 -6.1,0z" />
+
+    <!-- one long horizontal bar underneath -->
+    <path
+        android:fillColor="@color/logo_glyph"
+        android:pathData="M21,67.5h66v7.3h-66z" />
+</vector>

@@ -1,0 +1,65 @@
+#
+# Dependency budget (spec §3.3): the allowed set is exactly AndroidX,
+# Google Play Services Nearby Connections and NanoHTTPD, plus the Kotlin
+# runtime/coroutines the language itself needs. Nothing else may be added.
+# No Material Components: §1.5 asks for custom lightweight widgets and no
+# heavy UI framework, so the theme ancestry is AppCompat (§4.13).
+#
+[versions]
+agp = "8.6.1"
+kotlin = "1.9.25"
+coroutines = "1.8.1"
+
+coreKtx = "1.13.1"
+appcompat = "1.7.0"
+activity = "1.9.2"
+fragment = "1.8.4"
+lifecycle = "2.8.6"
+recyclerview = "1.3.2"
+constraintlayout = "2.1.4"
+viewpager2 = "1.1.0"
+swiperefresh = "1.1.0"
+documentfile = "1.0.1"
+media = "1.7.0"
+annotation = "1.8.2"
+collection = "1.4.4"
+preference = "1.2.1"
+
+nearby = "19.3.0"
+nanohttpd = "2.3.1"
+
+junit = "4.13.2"
+androidxTestCore = "1.6.1"
+robolectric = "4.13"
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
+androidx-viewpager2 = { module = "androidx.viewpager2:viewpager2", version.ref = "viewpager2" }
+androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefresh" }
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+androidx-media = { module = "androidx.media:media", version.ref = "media" }
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
+androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
+androidx-preference-ktx = { module = "androidx.preference:preference-ktx", version.ref = "preference" }
+
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+play-services-nearby = { module = "com.google.android.gms:play-services-nearby", version.ref = "nearby" }
+nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanohttpd" }
+
+junit = { module = "junit:junit", version.ref = "junit" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

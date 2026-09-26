@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shell container. The bottom navigation and the fragment destinations are
+  added in Stage 3 (§5.1, §5.2); this file exists so the skeleton runs.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/nav_host"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorBgBase" />

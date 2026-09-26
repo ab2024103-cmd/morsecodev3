@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §4.2 COLOUR TOKENS — DARK (sampled from the a-series mocks, exact).
+  Only the theme-dependent tokens are overridden here; accents, semantics,
+  peer avatars and the logo gradient are identical in both themes (§4.4–4.6).
+-->
+<resources>
+    <color name="bg_base">#0B0B0B</color>
+    <color name="surface_card">#141414</color>
+    <color name="surface_raised">#1A1A1A</color>
+    <color name="surface_pressed">#1F1F1F</color>
+    <color name="hairline_divider">#1F1F1F</color>
+    <color name="text_primary">#F5F5F4</color>
+    <color name="text_secondary">#A1A1AA</color>
+    <color name="text_meta">#71717A</color>
+    <!-- scrim: #000000 @ 62% -->
+    <color name="scrim_overlay">#9E000000</color>
+</resources>

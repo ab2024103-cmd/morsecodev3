@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  EVERY user-visible string lives here, correctly escaped, no duplicate names
+  (§3.8). Appendix A is the authoritative copy list; screens add their strings
+  as they are built, stage by stage.
+-->
+<resources>
+    <!-- Launcher label and product name: one word, capital M only (§1.1). -->
+    <string name="app_name">Morsecode</string>
+</resources>

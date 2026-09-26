@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  THE COLOUR TOKEN FILE (Appendix B / §4.2–4.6). This is the only place in the
+  product where a hex literal is allowed (§4.13, §20.8).
+
+  Values in this file are the LIGHT theme (§4.3, sampled from the b-series
+  mocks); values-night/colors.xml carries the DARK theme (§4.2, a-series).
+  Theme-independent palettes (accents, semantics, peer avatars, file-type and
+  onboarding icon colours, logo gradient) are defined here only.
+-->
+<resources>
+
+    <!-- ===== §4.3 LIGHT surfaces and text (warm paper, NOT pure white) ===== -->
+    <color name="bg_base">#EEEDE7</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="surface_raised">#F5F4EE</color>
+    <color name="surface_pressed">#E9E8E3</color>
+    <color name="hairline_divider">#E4E1D8</color>
+    <color name="text_primary">#141310</color>
+    <color name="text_secondary">#6B6862</color>
+    <color name="text_meta">#8A867E</color>
+    <!-- scrim: #141310 @ 38% -->
+    <color name="scrim_overlay">#61141310</color>
+
+    <!-- ===== §4.4 ACCENT PALETTE — exactly five, in this order ===== -->
+    <color name="accent_sunflower">#FACC15</color>
+    <color name="accent_sunflower_pressed">#EAB308</color>
+    <color name="accent_sunflower_deep">#A16207</color>
+    <color name="accent_leaf">#84CC16</color>
+    <color name="accent_leaf_pressed">#65A30D</color>
+    <color name="accent_ember">#EA580C</color>
+    <color name="accent_ember_pressed">#C2410C</color>
+    <color name="accent_violet">#8B5CF6</color>
+    <color name="accent_violet_pressed">#7C3AED</color>
+    <color name="accent_sky">#0EA5E9</color>
+    <color name="accent_sky_pressed">#0284C7</color>
+    <!-- Ink on any accent fill is always a near-black, never white (§4.4). -->
+    <color name="ink_on_accent">#1A1400</color>
+
+    <!-- ===== §4.5 SEMANTIC COLOURS — identical in both themes ===== -->
+    <color name="state_success">#22C55E</color>
+    <color name="state_receiving">#A78BFA</color>
+    <color name="state_receiving_bg">#412D6D</color>
+    <color name="state_warning">#F59E0B</color>
+    <color name="state_error">#EF4444</color>
+    <color name="state_info">#0EA5E9</color>
+    <!-- Progress fill runs accent -> #84CC16 (§4.5). -->
+    <color name="progress_gradient_end">#84CC16</color>
+
+    <!-- ===== §4.6 PEER IDENTITY COLOURS — independent of the accent ===== -->
+    <color name="peer_amber">#F59E0B</color>
+    <color name="peer_violet">#8B5CF6</color>
+    <color name="peer_sky">#0EA5E9</color>
+    <color name="peer_green">#22C55E</color>
+    <color name="peer_red">#EF4444</color>
+    <color name="peer_pink">#EC4899</color>
+
+    <!-- ===== §4.9 filled category / onboarding artwork ===== -->
+    <color name="icon_image">#F59E0B</color>
+    <color name="icon_video">#0EA5E9</color>
+    <color name="icon_audio">#A78BFA</color>
+    <color name="icon_doc">#22C55E</color>
+    <color name="icon_archive">#EF4444</color>
+    <color name="icon_apk">#8B5CF6</color>
+    <color name="icon_unknown">#71717A</color>
+    <color name="onboarding_radar_start">#F59E0B</color>
+    <color name="onboarding_radar_end">#EA580C</color>
+    <color name="onboarding_lock">#22C55E</color>
+    <color name="onboarding_globe">#0EA5E9</color>
+    <color name="onboarding_check">#8B5CF6</color>
+
+    <!-- ===== §4.5 WebShare storage bar, three stops ===== -->
+    <color name="storage_bar_start">#FACC15</color>
+    <color name="storage_bar_mid">#EA580C</color>
+    <color name="storage_bar_end">#22C55E</color>
+
+    <!-- ===== §4.10 LOGO — never takes the accent ===== -->
+    <color name="logo_gradient_start">#EF7D0F</color>
+    <color name="logo_gradient_mid">#F5A712</color>
+    <color name="logo_gradient_end">#FBBF24</color>
+    <color name="logo_glyph">#000000</color>
+
+    <!-- Fixed neutrals used by immersive surfaces (§6.10: black in dark, #141310 in light). -->
+    <color name="viewer_backdrop_dark">#000000</color>
+    <color name="viewer_backdrop_light">#141310</color>
+</resources>

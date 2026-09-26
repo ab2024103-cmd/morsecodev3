@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logs and crash reports never leave the device by any automatic path (§16.6, §17.1). -->
+<full-backup-content>
+    <exclude
+        domain="file"
+        path="logs" />
+    <exclude
+        domain="file"
+        path="crash" />
+</full-backup-content>

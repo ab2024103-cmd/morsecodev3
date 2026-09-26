@@ -1,0 +1,118 @@
+#
+# Morsecode CI — spec §19.3.
+# On push: run the §20.8 lint gate and the unit tests, assemble the release and
+# debug APKs, and publish BOTH as downloadable release assets.
+#
+# SIGNING (§19.3 SIGNING KEY RULE): the release APK is signed with ONE stable
+# upload key held in repo secrets. Generating a throwaway key per build is
+# forbidden. When the secrets are absent the release variant is built with the
+# debug key, the artifact is named `-preview-unsigned`, the run summary says so
+# and §19.3 / A18 are reported as NOT satisfied.
+#
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint gate (§20.8)
+        run: python3 tools/lintgate.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install the upload key, when the secrets exist (§19.3)
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
+            {
+              echo "keyAlias=$KEY_ALIAS"
+              echo "keyPassword=$KEY_PASSWORD"
+              echo "storePassword=$STORE_PASSWORD"
+            } > keystore.properties
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Unit tests (§21.1)
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Assemble debug and release (§19.3)
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
+
+      - name: Name the artifacts
+        id: artifacts
+        run: |
+          mkdir -p dist
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/morsecode-${VERSION}-debug.apk"
+          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/morsecode-${VERSION}-release.apk"
+          else
+            cp app/build/outputs/apk/release/app-release.apk \
+               "dist/morsecode-${VERSION}-preview-unsigned.apk"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -l dist
+
+      - name: Run summary
+        run: |
+          {
+            echo "## Morsecode ${{ steps.artifacts.outputs.version }} (1)"
+            echo ""
+            if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+              echo "- Release APK signed with the stable upload key (§19.3 satisfied)."
+            else
+              echo "- **No upload-key secrets present.** The release variant was built with the"
+              echo "  debug key and published as \`-preview-unsigned\`. §19.3 and A18 are NOT"
+              echo "  satisfied until KEYSTORE_B64 / KEY_ALIAS / KEY_PASSWORD / STORE_PASSWORD exist."
+            fi
+            echo "- Sizes (budget §19.4: release ~6.5 MB, debug ~8 MB):"
+            echo ""
+            echo '```'
+            du -h dist/* || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: morsecode-apks
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish both APKs as release assets (§19.3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ci-$(echo '${{ github.ref_name }}' | tr '/' '-')"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --prerelease \
+              --title "Morsecode CI — ${{ github.ref_name }}" \
+              --notes "Rolling CI build of \`${{ github.ref_name }}\` at ${{ github.sha }}."
+          fi
+          gh release upload "$TAG" dist/*.apk --clobber

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Theme attributes for the Sunflower design system (§4.2–4.5).
+  NO SCREEN MAY HARD-CODE A HEX VALUE (§4.13): everything resolves through
+  these attributes so the accent picker and the light theme keep working.
+-->
+<resources>
+    <!-- Surfaces and text (§4.2 dark / §4.3 light). -->
+    <attr name="colorBgBase" format="color" />
+    <attr name="colorSurfaceCard" format="color" />
+    <attr name="colorSurfaceRaised" format="color" />
+    <attr name="colorSurfacePressed" format="color" />
+    <attr name="colorHairline" format="color" />
+    <attr name="colorTextPrimary" format="color" />
+    <attr name="colorTextSecondary" format="color" />
+    <attr name="colorTextMeta" format="color" />
+    <attr name="colorScrimOverlay" format="color" />
+
+    <!-- The one accent in force, set by the accent picker (§4.4). -->
+    <attr name="colorAccentMain" format="color" />
+    <attr name="colorAccentPressed" format="color" />
+    <attr name="colorAccentDeep" format="color" />
+    <attr name="colorInkOnAccent" format="color" />
+
+    <!-- Card treatment differs by theme: light carries a soft shadow, dark never does (§4.3). -->
+    <attr name="cardElevation" format="dimension" />
+</resources>

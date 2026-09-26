@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §3.9 — cleartext is permitted for local/private destinations only.
+
+  Cleartext from API 28 on is blocked by default. Two honest notes (§20.6):
+   * The platform config format matches host names and literal IPs; it cannot
+     express a CIDR range, so the private ranges are covered by the loopback
+     and hotspot-gateway literals below plus the app's raw TCP sockets, which
+     this policy does not govern at all (it applies to the HTTP stacks).
+   * WebShare is an INBOUND server (:33455). A browser on the LAN reaching it
+     is unaffected by this phone-side policy; the entries below cover the
+     app's own loopback checks and the hotspot gateway address used when the
+     phone becomes the access point (§7.1).
+  No non-local destination is permitted anywhere: there is no network egress
+  beyond the local network (§3.4).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">192.168.43.1</domain>
+        <domain includeSubdomains="false">192.168.49.1</domain>
+    </domain-config>
+</network-security-config>
