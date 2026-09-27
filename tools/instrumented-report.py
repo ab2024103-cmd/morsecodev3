@@ -56,7 +56,8 @@ def main() -> None:
 
     for name, title in (
         ("emulator-evidence/diag.txt", "Device as the harness found it"),
-        ("emulator-evidence/gradle-tails.txt", "Gradle output (tails)"),
+        ("emulator-evidence/gradle-tails.txt", "Gradle output (tail)"),
+        ("emulator-evidence/shots-listing.txt", "What was on the device"),
     ):
         if os.path.exists(name):
             body = open(name, errors="replace").read().strip()

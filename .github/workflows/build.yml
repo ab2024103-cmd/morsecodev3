@@ -264,30 +264,25 @@ jobs:
             # whole point of the job, and the real verdict is enforced by the
             # last step. The first two runs collected nothing because a failing
             # Gradle invocation stopped everything after it.
-            echo "started" > script-marker.txt
+            echo "phase=start" > script-marker.txt
             set +e
-            # Say what the device looks like before anything else, so a run
-            # that dies early still explains itself from the artifact.
             { adb devices -l; adb shell getprop sys.boot_completed; adb shell getprop ro.build.version.sdk; } > diag.txt 2>&1
             adb logcat -c
             adb logcat > logcat-${{ matrix.api }}.txt &
             adb shell mkdir -p /sdcard/morsecode-shots
 
-            # One invocation per class, so a crash in one suite (there is a
-            # real one on API 23) cannot cancel the others.
-            FAILED=0
-            for CLASS in AccentAndSizeTest FilesFlowTest LoopbackTransferTest ScreenWalkTest WebShareDeviceTest; do
-              echo "=== $CLASS ==="
-              ./gradlew --no-daemon connectedDebugAndroidTest \
-                -Pandroid.testInstrumentationRunnerArguments.class=app.morsecode.android.$CLASS \
-                > "gradle-$CLASS.log" 2>&1 || FAILED=1
-              tail -25 "gradle-$CLASS.log" >> gradle-tails.txt
-              mkdir -p "results/$CLASS"
-              cp -r app/build/outputs/androidTest-results/connected/* "results/$CLASS/" 2>/dev/null
-            done
-            echo "gradle_exit=$FAILED" >> "$GITHUB_ENV"
+            # ONE invocation — the five-invocation loop died silently twice and
+            # cost two runs to learn that. The class list is ordered so the
+            # suite that crashes on API 23 runs LAST and cannot cancel the
+            # others; AndroidJUnitRunner honours the order it is given.
+            echo "phase=gradle" > script-marker.txt
+            CLASSES=app.morsecode.android.AccentAndSizeTest,app.morsecode.android.ScreenWalkTest,app.morsecode.android.WebShareDeviceTest,app.morsecode.android.LoopbackTransferTest,app.morsecode.android.FilesFlowTest
+            ./gradlew --no-daemon connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=$CLASSES > gradle.log 2>&1
+            echo "gradle_exit=$?" >> "$GITHUB_ENV"
+            tail -60 gradle.log > gradle-tails.txt
 
-            # §21.3's size sweep: the §4.14 matrix, driven from adb.
+            echo "phase=sweep" > script-marker.txt
             mkdir -p sweep
             for size in 320x640 360x740 412x870 480x960 600x960 840x1200; do
               adb shell wm size "$size"
@@ -298,12 +293,14 @@ jobs:
             adb shell wm size reset
             adb shell wm density reset
 
+            echo "phase=pull" > script-marker.txt
             mkdir -p screenshots
             adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1
             adb pull /sdcard/morsecode-shots screenshots > shots-pull.txt 2>&1
             adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots >> shots-pull.txt 2>&1
             ls -R screenshots > shots-pulled.txt 2>&1
-            echo "completed" > script-marker.txt
+
+            echo "phase=completed" > script-marker.txt
             exit 0
 
       - name: Collect the evidence
@@ -317,7 +314,7 @@ jobs:
           cp -r results emulator-evidence/results 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
           cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt emulator-evidence/ 2>/dev/null || true
-          cp gradle-*.log emulator-evidence/ 2>/dev/null || true
+          cp gradle.log emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt
