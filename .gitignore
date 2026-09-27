@@ -12,3 +12,4 @@ captures/
 *.keystore
 keystore.properties
 .DS_Store
+upload-key-secrets.txt

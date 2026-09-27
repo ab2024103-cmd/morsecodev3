@@ -52,6 +52,16 @@ jobs:
               echo "keyPassword=$KEY_PASSWORD"
               echo "storePassword=$STORE_PASSWORD"
             } > keystore.properties
+            # Fail HERE, with a readable message, rather than three minutes
+            # later inside Gradle: a mistyped password or a truncated base64
+            # blob is the likeliest thing to go wrong on the first attempt.
+            if ! keytool -list -keystore upload-keystore.jks \
+                 -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+              echo "::error::The signing secrets are present but the keystore" \
+                   "could not be opened. Check KEYSTORE_B64 (must be one line," \
+                   "base64 of the .jks), KEY_ALIAS, and STORE_PASSWORD."
+              exit 1
+            fi
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
@@ -112,6 +122,36 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ls -l dist
 
+      # §19.3 / A18: prove the artifact, do not assume it. A release APK that
+      # silently kept the debug key would satisfy nobody, so this step fails
+      # the build if the secrets were present and the signature is not theirs.
+      - name: Verify the release signature (§19.3)
+        id: signature
+        run: |
+          APK=$(ls dist/morsecode-*-release.apk dist/morsecode-*-preview-unsigned.apk 2>/dev/null | head -1)
+          APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner 2>/dev/null | sort -r | head -1)
+          if [ -n "$APKSIGNER" ]; then
+            CERTS=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null || true)
+          else
+            CERTS=$(keytool -printcert -jarfile "$APK" 2>/dev/null || true)
+          fi
+          FINGERPRINT=$(echo "$CERTS" | grep -i -m1 'SHA-256' | sed 's/.*: *//')
+          SUBJECT=$(echo "$CERTS" | grep -i -m1 'Owner\|Subject DN' | sed 's/.*: *//')
+          echo "fingerprint=${FINGERPRINT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "subject=${SUBJECT:-unknown}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+            if echo "$SUBJECT" | grep -qi 'Android Debug'; then
+              echo "::error::Signing secrets were present but the release APK" \
+                   "carries the DEBUG certificate. §19.3 is not satisfied."
+              exit 1
+            fi
+            echo "Release APK signed by: $SUBJECT"
+            echo "SHA-256: $FINGERPRINT"
+          else
+            echo "No upload key configured — this is the debug-key preview build."
+          fi
+
       - name: Run summary
         run: |
           {
@@ -125,6 +165,8 @@ jobs:
               echo "  satisfied until KEYSTORE_B64 / KEY_ALIAS / KEY_PASSWORD / STORE_PASSWORD exist."
             fi
             echo "- Unit tests: ${{ steps.tests.outputs.tally }}"
+            echo "- Signing certificate: ${{ steps.signature.outputs.subject }}"
+            echo "- Certificate SHA-256: ${{ steps.signature.outputs.fingerprint }}"
             echo "- Sizes (budget §19.4: release ~6.5 MB, debug ~8 MB):"
             echo ""
             echo '```'
@@ -151,6 +193,8 @@ jobs:
             "- unit tests: ${{ steps.tests.outputs.tally }}" \
             "- lint gate (§20.8): passed" \
             "- signed with the stable upload key: ${{ steps.signing.outputs.signed }}" \
+            "- signing certificate: ${{ steps.signature.outputs.subject }}" \
+            "- certificate SHA-256: ${{ steps.signature.outputs.fingerprint }}" \
             "" \
             "\`\`\`" \
             "$(du -h dist/* | sed 's/\t/  /')" \
