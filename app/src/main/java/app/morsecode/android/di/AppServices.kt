@@ -11,6 +11,7 @@ import app.morsecode.android.core.data.Prefs
 import app.morsecode.android.core.data.RecentDevices
 import app.morsecode.android.core.network.Discovery
 import app.morsecode.android.core.network.LanTransport
+import app.morsecode.android.core.network.NearbyTransport
 import app.morsecode.android.core.network.SessionRegistry
 import app.morsecode.android.core.storage.Conflicts
 import app.morsecode.android.core.storage.ReceiveSinkFactory
@@ -127,6 +128,27 @@ object AppServices {
             openContent = { item ->
                 runCatching { appContext.contentResolver.openInputStream(item.file.uri) }.getOrNull()
             },
+            logStore = logStore,
+        )
+    }
+
+    /**
+     * §11.3 Nearby, behind the same Transport interface as LAN. A device
+     * without Play Services simply never starts it and stays on LAN (§20.6).
+     */
+    val nearbyTransport: NearbyTransport by lazy {
+        NearbyTransport(
+            context = appContext,
+            scope = engineScope,
+            deviceId = deviceId,
+            deviceName = deviceName,
+            incoming = incomingFiles,
+            openContent = { item ->
+                runCatching { appContext.contentResolver.openInputStream(item.file.uri) }.getOrNull()
+            },
+            // §11.1: Nearby publishes into the SAME deduplicated list as LAN.
+            onPeerFound = { peer -> discovery.publish(peer) },
+            onPeerLost = { endpointId -> discovery.forget(endpointId) },
             logStore = logStore,
         )
     }

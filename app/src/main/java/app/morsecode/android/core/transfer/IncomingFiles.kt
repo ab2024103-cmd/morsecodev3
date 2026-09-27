@@ -170,6 +170,62 @@ class IncomingFiles(
         }
     }
 
+    /**
+     * The Nearby path (§11.3). The SDK owns the chunking, so there are no MRSC
+     * frames and no per-chunk CRC here; §11.3 compensates by comparing the
+     * pre-payload metadata's size on every tier and sha256 additionally except
+     * on the lowest, which is exactly what this does while it writes.
+     */
+    fun onStream(fileId: String, input: InputStream) {
+        val file = pending.remove(fileId) ?: return
+        var written = 0L
+        val digest = if (verifyWithSha && file.sha256 != null) {
+            java.security.MessageDigest.getInstance("SHA-256")
+        } else {
+            null
+        }
+        try {
+            file.sink.openAppend().use { sink ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    sink.write(buffer, 0, read)
+                    digest?.update(buffer, 0, read)
+                    written += read
+                    engine.incomingProgress(file.itemId, written)
+                }
+                sink.flush()
+            }
+
+            val actualSha = digest?.let { hex(it.digest()) }
+            val problem = Integrity.verify(file.size, written, file.sha256, actualSha)
+            if (problem != null) throw IOException(problem)
+
+            val location = file.sink.finish()
+            engine.incomingResult(file.itemId, TransferState.COMPLETED, file.peerName, path = location)
+        } catch (e: Exception) {
+            logStore?.e("Nearby receive failed for ${file.displayName}: ${e.message}")
+            file.sink.discard()
+            engine.incomingResult(
+                file.itemId,
+                TransferState.FAILED,
+                file.peerName,
+                error = e.message ?: e.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun hex(bytes: ByteArray): String {
+        val out = StringBuilder(bytes.size * 2)
+        for (byte in bytes) {
+            val value = byte.toInt() and 0xFF
+            if (value < 0x10) out.append('0')
+            out.append(Integer.toHexString(value))
+        }
+        return out.toString()
+    }
+
     /** §9.8: a rejected or ended session leaves no half-written files behind. */
     fun abandonAll(reason: String) {
         for (file in pending.values) {

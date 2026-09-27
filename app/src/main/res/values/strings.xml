@@ -223,6 +223,10 @@
     <string name="channel_webshare">WebShare</string>
     <string name="channel_playback">Playback</string>
 
+    <!-- ===== Honest copy for the Nearby transport (§11.3, §20.6) ===== -->
+    <string name="nearby_pause_note">Pauses after the current file</string>
+    <string name="nearby_unavailable">Nearby needs Play Services · Wi-Fi LAN only on this device</string>
+
     <!-- ===== Transfer notification (§6.18). Actions arrive with Stage 9. ===== -->
     <string name="notification_transfer_title">Transfer running</string>
     <string name="notification_transfer_explainer">This notification keeps the transfer alive. Dismissing it or force-stopping the app interrupts the transfer; it disappears on its own when the transfer ends.</string>

@@ -45,6 +45,13 @@ class DeviceTier(context: Context) {
     val maxBroadcastPeers: Int = if (isLowEndDevice) 2 else 8
 
     /**
+     * §10.2 / §13: a Nearby broadcast is capped at 3 peers, and 2 on the low
+     * tier — the radio, not the app, is the limit. Nearby stays fully
+     * available either way; only the count changes.
+     */
+    val maxNearbyPeers: Int = if (isLowEndDevice) 2 else 3
+
+    /**
      * §4.11: everything obeys ANIMATOR_DURATION_SCALE; on a low-tier device the
      * radar degrades to a static ring and progress animation is disabled.
      */
