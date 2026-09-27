@@ -194,16 +194,32 @@ class PlayerContractTest {
     }
 
     @Test
-    fun reorderingAndRemovingKeepTheCurrentTrackCurrent() {
+    fun reorderingKeepsThePlayingTrackPlaying() {
         val queue = PlaybackQueue()
         queue.setQueue(listOf(track(1), track(2), track(3)), startIndex = 1)
         val playing = queue.state.value.current
 
+        // Dragging another row past the current one must not change what is
+        // playing — it moves the list, not the needle.
         queue.move(0, 2)
-        assertEquals("the playing track stays the playing track", playing, queue.state.value.current)
-
-        queue.remove(0)
         assertEquals(playing, queue.state.value.current)
+        assertEquals(listOf(2L, 3L, 1L), queue.state.value.tracks.map { it.id })
+    }
+
+    @Test
+    fun removingAnotherRowLeavesTheNeedleAloneAndRemovingTheCurrentAdvances() {
+        val queue = PlaybackQueue()
+        queue.setQueue(listOf(track(1), track(2), track(3)), startIndex = 1)
+        val playing = queue.state.value.current
+
+        queue.remove(2)
+        assertEquals("removing a later row cannot change the current track", playing, queue.state.value.current)
         assertEquals(2, queue.state.value.tracks.size)
+
+        // Swiping away the track that is playing has to land somewhere: the
+        // item that took its place, not a crash and not index 0.
+        queue.remove(queue.state.value.index)
+        assertEquals(1, queue.state.value.tracks.size)
+        assertEquals(1L, queue.state.value.current?.id)
     }
 }
