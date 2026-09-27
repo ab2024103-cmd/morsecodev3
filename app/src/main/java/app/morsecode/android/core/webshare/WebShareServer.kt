@@ -87,7 +87,7 @@ class WebShareServer(
         uri.startsWith("/video/") -> asset("index.html", "text/html")
         uri == "/upload" -> guarded(session) { upload(session) }
         uri == "/api/upload-status" -> guarded(session) { uploadStatus(session) }
-        uri == "/api/events" -> guarded(session) { events(session) }
+        uri == "/api/events" -> guarded(session) { web -> events(web) }
         uri == "/api/push-accept" -> guarded(session) { json(JSONObject().put("ok", true)) }
         else -> noStore(newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_JSON, """{"error":"not found"}"""))
     }
