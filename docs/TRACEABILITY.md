@@ -585,3 +585,70 @@ class-validation error (`@After` returning a value).
     unchanged; this just names which file is being detected.
 
 ---
+
+## Stage 7 — the Nearby Connections transport (§11.3, §13)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/network/NearbyTransport.kt` | §11.3, §11.1, §9.8 | P2P_STAR on the fixed service id, advertising and discovering **concurrently**. Endpoints are published into the SAME deduplicated peer list as LAN with a NEARBY badge; `onConnectionInitiated` asks for consent before accepting, and `onDisconnected` applies the session-end rule before forgetting the session. |
+| `core/network/NearbySession.kt` | §11.3, §8.2 | The same `TransportSession` interface as LAN, so the engine cannot tell them apart. A META byte payload precedes every STREAM payload; the SDK owns the chunking and nothing here reimplements it. Pause and cancel send the control message, call `cancelPayload` **and** schedule the 3 s fallback. |
+| `core/network/NearbyTransfers.kt` | §11.3 | The three maps §11.3 names — `outgoingWaiters` by fileId, payloadId → fileId, the pause/cancel flags — and the `PayloadTransferUpdate` translation. Deliberately free of every Play Services type, which is what makes the rules testable without a device. |
+| `core/network/NearbyPayloads.kt` | §11.3 | Control messages and file metadata in the **same JSON vocabulary** as the LAN control channel, built on `Protocol`, so a change to META cannot land on only one transport. |
+| `core/network/PlayServices.kt` | §11.3, §6.15, §20.6 | Availability read reflectively (no extra dependency, no `NoClassDefFoundError` on a device without GMS) and the Doctor's exact line for each case. |
+| `core/transfer/IncomingFiles.kt` (extended) | §11.3, §9.4 | `onStream`: no MRSC frames on this path, so integrity is the pre-payload metadata's size on every tier plus sha256 computed while writing, except on the lowest tier. |
+| `core/util/DeviceTier.kt` (extended) | §13, §10.2 | `maxNearbyPeers` = 3, and 2 on the low tier. A count, never a capability. |
+| `res/values/strings.xml` | §11.3 honest copy | "Pauses after the current file" and the LAN-only note. |
+| `app/src/test/.../NearbyTransfersTest.kt` | §21.1 | 8 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A1** (discovery defaults to LAN and a 144 MB video moves at Wi-Fi speed; Nearby peers appear in the SAME list with a Nearby badge and also connect) | **BLOCKED** | Every clause is a two-phone, real-radio observation: Nearby cannot be exercised in CI at all, because Play Services and a second device are required. What is executed: `NearbyTransfersTest` (8 tests) over the whole state machine; `Discovery.preferred` returning LAN under Auto; `NearbyTransport.onEndpointFound` publishing into the same list through `Discovery.publish`. Stage 6's loopback test remains the closest executed evidence for the LAN half. Confirmed in Stage 17 against §21.2. |
+| §11.3 payload-update translation | **PASS** | `successCompletesTheWaiterForThatFile`, `failureIsFailedAndCancelDependsOnWhichFlagWasSet`, `aCancelWithNoFlagIsTreatedAsAPauseNotALoss` — the SDK reports one CANCELED for both cases, and reading it as a loss would stop INV-3 ever resuming the file. |
+| §11.3 SESSION-END RULE | **PASS** | `theSessionEndRuleFailsEveryWaiterAndClearsEveryMap`: both waiters complete with `Failed("session closed")` and all three maps are empty afterwards. This is the INV-1 guarantee on this transport, and it is one method so no caller can do it in the wrong order. |
+| INV-2 on this transport | **PASS** | `completingOneFileLeavesTheOthersAlone`: one file's outcome leaves the other waiter and its payload mapping untouched. |
+| §11.3 metadata precedes every file | **PASS** | `theMetadataPayloadIsTheSameMetaVocabularyAsLan`: the payload parses as a `META` message with name, size, sha256 and relativePath, so §9.4's verification is possible. Rubbish from a foreign endpoint parses to null rather than throwing. |
+| §20.6 honest degradation without Play Services | **PASS** | `aDeviceWithoutPlayServicesDegradesToLanWithTheDoctorLine` covers all five status codes and both Doctor sentences; `start()` returns false and logs, and the caller keeps LAN running. |
+| §13 low-tier limits | **PASS** | `maxNearbyPeers` 3 / 2; `StorageTest.tieringScalesWorkAndNeverCapability` still holds — every tier value is a count or a size. |
+| A18 | **PASS** | Gate `PASS — no findings`, 218 files; **121 tests, 0 failed** in run 36303985533. |
+
+### CI evidence
+
+Run **36303985533**, all steps green: 121 tests, 0 failed, including
+`NearbyTransfersTest (8)`. Release APK 1.4 MB, still well inside §19.4.
+
+### Not yet done in this stage
+
+- **Nothing starts Nearby.** `AppServices.nearbyTransport` exists and is wired
+  to publish into discovery, but no screen calls `start()`, and its `consent`
+  callback still defaults to accepting — the same caveat recorded for LAN in
+  Stage 6. Stage 8 must set both before either transport is started.
+- The Nearby permissions (`BLUETOOTH_SCAN` / `ADVERTISE` / `CONNECT`,
+  `NEARBY_WIFI_DEVICES`, and pre-31 location) are declared and grouped in
+  `Permissions.nearby()` but never requested; that is Stage 8's contextual
+  prompt.
+- `connect(peerId)` requests the connection and returns whatever session
+  already exists rather than suspending until one appears: the result arrives
+  through `onConnectionResult`, and the screen that waits for it is Stage 8.
+- The "Pauses after the current file" string exists but no screen shows it yet.
+
+### Deviations and resolved tensions
+
+17. **Play Services availability is read by reflection.** §3.3's dependency
+    budget does not include play-services-base, and one integer is not worth
+    another artifact. The reflective read also means a device with no GMS at
+    all answers "unavailable" instead of throwing at class-load time.
+18. **A CANCELED update with no flag set is treated as PAUSED, not CANCELLED.**
+    §11.3 says the flag decides, and it is always set for actions this phone
+    took; the remaining case is the *peer* cancelling, where the resumable
+    reading is the safe one — PAUSED work is recoverable, CANCELLED work is
+    gone (§9.1). Asserted in `aCancelWithNoFlagIsTreatedAsAPauseNotALoss`.
+19. **The STREAM payload is correlated to its file by the META that preceded
+    it.** The SDK assigns the stream's payload id on arrival and offers no
+    field to carry ours, so the receiving side pairs "the metadata just
+    received" with "the next stream". §11.3 prescribes exactly that ordering.
+
+---
