@@ -72,7 +72,9 @@ class BroadcastTest {
         assertEquals(mb(212.0), running.batchBytes)
         assertEquals("TO SEND MB = BATCH MB × PEERS", mb(636.0), running.toSendBytes)
         assertEquals(mb(100.0), running.sentBytes)
-        assertEquals(mb(14.2), running.throughputBps)
+        // The mock specifies the rendered figure, and three truncated peer
+        // speeds need not sum to the exact byte count of 14.2 MB.
+        assertEquals("14.2 MB/s", app.morsecode.android.core.util.Fmt.speed(running.throughputBps))
 
         assertEquals(
             listOf("3" to "PEERS", "212 MB" to "BATCH MB", "636 MB" to "TO SEND MB"),
