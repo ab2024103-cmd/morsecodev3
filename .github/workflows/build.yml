@@ -277,9 +277,13 @@ jobs:
             # others; AndroidJUnitRunner honours the order it is given.
             echo "phase=gradle" > script-marker.txt
             CLASSES=app.morsecode.android.AccentAndSizeTest,app.morsecode.android.ScreenWalkTest,app.morsecode.android.WebShareDeviceTest,app.morsecode.android.LoopbackTransferTest,app.morsecode.android.FilesFlowTest
-            ./gradlew --no-daemon connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=$CLASSES > gradle.log 2>&1
-            echo "gradle_exit=$?" >> "$GITHUB_ENV"
+            # tee, not redirect: the two runs that completed streamed their
+            # output, and both silent runs were killed mid-build. Keeping the
+            # step talking is apparently what keeps it alive, so the log is
+            # captured AND streamed, and a hang is bounded rather than silent.
+            timeout 25m ./gradlew --no-daemon connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=$CLASSES 2>&1 | tee gradle.log
+            echo "gradle_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
             tail -60 gradle.log > gradle-tails.txt
 
             echo "phase=sweep" > script-marker.txt
