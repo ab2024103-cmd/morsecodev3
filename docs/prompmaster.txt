@@ -5,12 +5,10 @@ Product / app name  : Morsecode
 applicationId       : app.morsecode.android   (new project — see §1.1.1)
 Ships as            : 1.0.0 (versionCode 1) — a greenfield build, no installed
                       base, no legacy data, no cross-version compatibility duty
-Reference drafts    : "MorseLink — Complete Product & Engineering Specification"
-                      and "MORSELINK — COMPLETE PROJECT SPECIFICATION" (module
-                      draft). BACKGROUND ONLY — prior art from a different
-                      project, carried forward where it is good and overridden
-                      freely where it is not. Neither is binding; this document
-                      is (§0.2). Nothing named "MorseLink" ships (§1.1.1).
+Prior art           : two drafts for a DIFFERENT, earlier product. Background
+                      only, not binding, quarantined in §2.0. Good ideas were
+                      carried forward; nothing of that product ships by name,
+                      by package, by scheme or by file format (§1.1.1, A19).
 Date                : 2026-09-26
 ================================================================================
 
@@ -54,11 +52,11 @@ CONTENTS
      not concept art. See §4.1.
 
 0.3.1 THE MOCKS CARRY AN OLD WORDMARK. The deck was drawn for the earlier
-     MorseLink project, so some frames print "MorseLink" — onboarding slide 4's
-     button, the Help accordion's first question, the log-viewer header line,
-     the "MorseLink" media folder in the Videos/WebShare folder panels, and the
-     sample log version "1.5.1 (15)". Read every one of those as "Morsecode"
-     and 1.0.0 (1) respectively (§1.1, §19.1). This is the ONE respect in which
+     product quarantined in §2.0, so five places print its name or version:
+     onboarding slide 4's button, the Help accordion's first question, the
+     log-viewer header line, the media folder in the Videos/WebShare folder
+     panels, and the sample log version "1.5.1 (15)". Read all five as
+     "Morsecode" and 1.0.0 (1) (§1.1, §19.1). This is the ONE respect in which
      this document deliberately overrules the artwork; everything else about
      the mocks stands as drawn.
 
@@ -186,6 +184,18 @@ CONTENTS
 2. PROVENANCE AND DELTAS (where this spec departs from the reference drafts)
 --------------------------------------------------------------------------------
 
+2.0  QUARANTINE — THE PRIOR PRODUCT. Read this once, then never act on it.
+     The two reference drafts and the mock deck were made for an earlier,
+     separate product: "MorseLink", applicationId com.morselink.app, version
+     1.5.x. Morsecode is NOT a rename, a fork or an upgrade of it. There is no
+     installed base, therefore: no migration, no legacy morselink:// scheme, no
+     legacy .part handling, no Download/MorseLink folder reuse, no pairing
+     compatibility, no interop duty — and none of those may be invented later
+     to be "safe". Every identifier is defined fresh in §1.1.1. The old name
+     appears in this document only as a prohibition, and in exactly three
+     places: here, the naming rule in §1.1.1, and the grep string in A19 (which
+     excludes docs/ for that reason). It must appear NOWHERE in the build.
+
 D1  Accent moves from teal #1FA36B to Sunflower #FACC15; green is demoted to a
     purely semantic success/confirm colour.                            [CHANGED]
 D2  A full LIGHT theme ships alongside dark, plus "Follow system".     [NEW]
@@ -206,11 +216,10 @@ D8  Five-tile action bar on every transfer screen: Choose · Queue · Pause ·
 D9  Settings gains the accent-colour picker, "Crash reports · local, never
     uploaded", and a Diagnostics group.                                [CHANGED]
 D10 Default conflict policy becomes "Rename duplicates" (was "Always ask"). [CHANGED]
-D11 Identity: the reference drafts describe a product called MorseLink with
-    applicationId com.morselink.app. This is a separate, greenfield project —
-    Morsecode / app.morsecode.android / 1.0.0 (1), fresh signing key, "MRSC" chunk
-    magic, morsecode:// scheme. No legacy-compat code path exists anywhere and
-    none may be added (§1.1.1).                                        [CHANGED]
+D11 Identity: greenfield. Morsecode / app.morsecode.android / 1.0.0 (1), fresh
+    signing key, "MRSC" magic, morsecode:// scheme, .morsecode.part,
+    Download/Morsecode. No legacy-compat code path exists anywhere and none may
+    be added — see the quarantine in §2.0 and §1.1.1.                  [CHANGED]
 D13 QR is removed from the product: no scanner, no generator, no /api/qr, no
     rail entry, no camera permission, no ZXing. [Manual IP] on the discovery
     screen is the only address-pairing path and every displayed address is
@@ -293,11 +302,31 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      compileSdk — guard each one with `Build.VERSION.SDK_INT >= 24` and a manual
      loop fallback. This is enforced by the lint gate in §20.8.
 
-3.3  Third-party budget: total APK growth from non-AndroidX libraries ≤ 5 MB.
-     The allowed set is exactly: AndroidX, Google Play Services Nearby
-     Connections and NanoHTTPD. Nothing else. No image-loading library
-     is required (thumbnails go through MediaStore + a small LRU bitmap cache);
-     if one is used it must fit the 5 MB budget.
+3.3  DEPENDENCY ALLOWLIST [CHANGED — an earlier revision of this clause banned
+     Material Components and Media3, which contradicted §4.12/§4.13/§6.11 and
+     produced a hand-rolled UI and a 1.7 MB APK. That was a spec defect.]
+     REQUIRED:
+       - AndroidX (appcompat, core-ktx, recyclerview, viewpager2, fragment,
+         constraintlayout, lifecycle, coroutines).
+       - com.google.android.material:material 1.11+ — REQUIRED, not optional.
+         The mocks are Material surfaces: bottom sheets, switches, tab rows,
+         chips, snackbars, FABs, ripples, elevation. Hand-rolling them is the
+         single biggest cause of a UI that is "similar but not the same"
+         (§4.15). Use the MDC widgets and restyle them with §4 tokens; do not
+         reimplement their behaviour.
+       - androidx.media3 (ExoPlayer + UI) for BOTH players. MediaPlayer /
+         VideoView is NOT sufficient: codec coverage on API 23 devices is the
+         reason the reference phone stutters or refuses files that play
+         everywhere else, and seekTo() semantics differ (§6.11).
+       - Google Play Services Nearby Connections (§11.3).
+       - NanoHTTPD (§7.1).
+     ALLOWED IF USEFUL: an image/thumbnail loader (Glide or Coil) — MediaStore
+     plus a hand-rolled LRU is acceptable but not preferred at scale.
+     FORBIDDEN: anything that phones home, any analytics or crash SDK, any CDN
+     font, any QR library (§11.5), any DI framework (§8.1 uses a service
+     locator).
+     Budget: third-party growth ≤ 8 MB. Staying far under it is not a virtue —
+     see §19.4.
 
 3.4  No network egress except the local network. No analytics, no crash upload,
      no update ping, no font/CDN fetch. Crash reports and logs never leave the
@@ -512,6 +541,26 @@ D12 Everything else the reference drafts got right — the transfer invariants,
          panel becomes a horizontal chip strip and low-value table columns
          (Modified) drop out on narrow viewports — a phone browser must be able
          to use the site (§7.5).
+
+4.15 VISUAL FIDELITY PASS — "similar" is a defect [CHANGED]
+     Building each screen from the prose alone converges on something that
+     reads right and looks approximate. That is not acceptable for a product
+     whose design is already drawn. For EVERY screen:
+       1. put the reference beside the build — the mock sheet for that screen
+          (Appendix C) and/or the matching screen in the HTML simulator
+          (§0.3.2), and an emulator screenshot from §21.3, at the same width;
+       2. diff them deliberately, in this order: overall vertical rhythm →
+          component geometry (corner radius, height, stroke, elevation) →
+          typography (size, weight, letter-spacing, mono vs sans) → spacing and
+          alignment → colour roles → icon shape and weight → copy;
+       3. write the deltas down. Each one is either FIXED or accepted with a
+          one-line reason recorded in the traceability log. "Close enough" with
+          no entry is a defect.
+     Tolerances: spacing and sizes within 2 dp, corner radii and stroke widths
+     exact, type scale exact, colours exact (they are tokens — §4.13), icon
+     stroke weight consistent at 1.8 dp. Where the mock and this document
+     disagree, §0.2 applies, and the difference is recorded, not silently
+     chosen.
 
 --------------------------------------------------------------------------------
 5. INFORMATION ARCHITECTURE
@@ -1759,8 +1808,17 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      absent, build the release variant with the debug key, name the artifact
      `morsecode-<version>-preview-unsigned.apk`, say so in the run summary, and
      treat §19.3 and A18 as NOT satisfied until the secrets exist.
-19.4 Size budget: release APK ≈ 6.5 MB, debug ≈ 8 MB; the ≤ 5 MB third-party
-     growth budget is part of this.
+19.4 Size budget: release APK 5–9 MB, debug 7–12 MB, with the §3.3 third-party
+     allowance inside it.
+     A FLOOR, NOT ONLY A CEILING [CHANGED]. A release APK materially BELOW this
+     range — under ~4.5 MB — is evidence of something MISSING, not of
+     efficiency: absent Material/Media3, absent launcher densities, absent
+     drawables, absent WebShare assets, or screens that were stubbed and then
+     shrunk away by R8/resource-shrinking. Investigate before celebrating; a
+     comparable predecessor app with FEWER features shipped at 6.5 MB, so a
+     1.7 MB build of this one is a defect report, not a win. Record the APK
+     size per release and diff it against the previous build; an unexplained
+     drop is a release blocker until explained.
 19.5 Where the local environment cannot compile, local tooling is a linter, not
      a compiler: a green local check never means "it builds". Every change is
      verified by a full remote build whose real error output is read in full.
@@ -1840,6 +1898,26 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      (all four policies + apply-to-all) · broadcast stat formulas (§10.4) ·
      tab/selection state machines · Fmt size/speed/duration rendering ·
      MediaStore date-unit conversion · chunked-upload index math.
+
+21.3 EMULATOR IN CI IS MANDATORY [CHANGED]. No criterion may be reported
+     BLOCKED for "no device" when an emulator can settle it. CI runs an
+     Android emulator (e.g. reactivecircus/android-emulator-runner) on API 23
+     AND a current API level, and on every push it must:
+       - install the debug APK and run the instrumented suite;
+       - walk every screen in §6 and §7 once, capturing a PNG per screen per
+         theme, published as build artifacts — these are the inputs to the
+         §4.15 fidelity diff and the only honest evidence that a screen renders
+         at all;
+       - exercise everything that does not need a second radio: launch,
+         permissions, navigation, the Files tabs, selection, sort, the viewer
+         and both players, the WebShare server answering 127.0.0.1:33455 in
+         the emulator's own browser, uploads, zip download, light/dark, accent
+         switching, the §4.14 size sweep via `adb shell wm size/density`, and
+         a loopback transfer to a second emulator instance.
+     Only these stay BLOCKED without hardware: Nearby/Bluetooth radio cases,
+     true multi-phone timing (A1, A3, A9), real MYA-L10 behaviour (A10), and
+     TalkBack ergonomics (A17). Everything else is testable and must be tested.
+     A 33-of-35-BLOCKED audit is a CI gap, not an environment fact.
 
 21.2 MANDATORY REAL-DEVICE MATRIX. No change to the engine, control channel or
      session lifecycle may be called "working" on the strength of code review.
@@ -2208,16 +2286,13 @@ APPENDIX D — GAPS FOUND IN THE MOCKS AND THE DECISION TAKEN
      embedded or sidecar .srt only, otherwise disabled with "No subtitles".
  G14 The mock decks show device frames, deck captions and a Dark/Light pill.
      These are presentation chrome and must not be implemented (§0.4).
- G15 Product naming and identity: the mock deck and both reference drafts were
-     drawn for an earlier product, "MorseLink" (applicationId
-     com.morselink.app, 1.5.x). This is a separate, greenfield project. DECIDED:
-     the product, repo, package, wire magic, URL scheme, temp-file suffix and
-     media folder are all "morsecode" (§1.1.1); the first build is 1.0.0 (1);
-     there is no installed base, so no migration, no legacy scheme, no legacy
-     .part handling and no cross-product interop requirement exists — and none
-     may be invented. The mocks' "MorseLink" wordmark and their "1.5.1 (15)"
-     sample log line are stale artwork, not requirements (§0.3.1). A19 is the
-     acceptance criterion.
+ G15 Product naming and identity: the deck and both drafts were made for an
+     earlier, separate product. DECIDED: product, repo, package, wire magic,
+     URL scheme, temp-file suffix and media folder are all "morsecode"
+     (§1.1.1); the first build is 1.0.0 (1); no installed base, so no migration
+     and no interop duty, and none may be invented. The stale wordmark and the
+     "1.5.1 (15)" sample log line are artwork, not requirements (§0.3.1).
+     Full rationale: §2.0. Acceptance criterion: A19.
 ================================================================================
 END OF SPECIFICATION
 ================================================================================
