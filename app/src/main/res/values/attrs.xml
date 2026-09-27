@@ -24,4 +24,11 @@
 
     <!-- Card treatment differs by theme: light carries a soft shadow, dark never does (§4.3). -->
     <attr name="cardElevation" format="dimension" />
+
+    <!--
+      True in the light theme. The accent wash differs by theme (§4.4:
+      8% fill / 35% border in dark, 14% / 45% in light), so code that builds a
+      washed surface needs to know which theme it is in without reading a hex.
+    -->
+    <attr name="isLightSurface" format="boolean" />
 </resources>

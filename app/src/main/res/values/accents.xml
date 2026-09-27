@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §4.4 ACCENT PALETTE — exactly five themes, in this order, the first is the
+  default. ONE ACCENT AT A TIME across the whole product (§4.13); the accent
+  never recolours the launcher icon or the logo (§4.4, §4.10).
+
+  Each theme is a complete theme rather than an overlay so a single
+  setTheme() before setContentView re-skins every screen (§6.13).
+  "deep" is only prescribed for Sunflower (#A16207); the other four reuse
+  their pressed value, which is the darker step of the same hue.
+-->
+<resources>
+
+    <style name="Theme.Morsecode.Sunflower" parent="Theme.Morsecode">
+        <item name="colorAccentMain">@color/accent_sunflower</item>
+        <item name="colorAccentPressed">@color/accent_sunflower_pressed</item>
+        <item name="colorAccentDeep">@color/accent_sunflower_deep</item>
+        <item name="colorPrimary">@color/accent_sunflower</item>
+        <item name="colorAccent">@color/accent_sunflower</item>
+    </style>
+
+    <style name="Theme.Morsecode.Leaf" parent="Theme.Morsecode">
+        <item name="colorAccentMain">@color/accent_leaf</item>
+        <item name="colorAccentPressed">@color/accent_leaf_pressed</item>
+        <item name="colorAccentDeep">@color/accent_leaf_pressed</item>
+        <item name="colorPrimary">@color/accent_leaf</item>
+        <item name="colorAccent">@color/accent_leaf</item>
+    </style>
+
+    <style name="Theme.Morsecode.Ember" parent="Theme.Morsecode">
+        <item name="colorAccentMain">@color/accent_ember</item>
+        <item name="colorAccentPressed">@color/accent_ember_pressed</item>
+        <item name="colorAccentDeep">@color/accent_ember_pressed</item>
+        <item name="colorPrimary">@color/accent_ember</item>
+        <item name="colorAccent">@color/accent_ember</item>
+    </style>
+
+    <style name="Theme.Morsecode.Violet" parent="Theme.Morsecode">
+        <item name="colorAccentMain">@color/accent_violet</item>
+        <item name="colorAccentPressed">@color/accent_violet_pressed</item>
+        <item name="colorAccentDeep">@color/accent_violet_pressed</item>
+        <item name="colorPrimary">@color/accent_violet</item>
+        <item name="colorAccent">@color/accent_violet</item>
+    </style>
+
+    <style name="Theme.Morsecode.Sky" parent="Theme.Morsecode">
+        <item name="colorAccentMain">@color/accent_sky</item>
+        <item name="colorAccentPressed">@color/accent_sky_pressed</item>
+        <item name="colorAccentDeep">@color/accent_sky_pressed</item>
+        <item name="colorPrimary">@color/accent_sky</item>
+        <item name="colorAccent">@color/accent_sky</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.14 tablet / foldable open: rows cap their width instead of spanning a metre. -->
+<resources>
+    <dimen name="screen_padding">32dp</dimen>
+    <dimen name="grid_cell_target">148dp</dimen>
+    <dimen name="content_max_width">840dp</dimen>
+</resources>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §4.7 TYPOGRAPHY. System family (Roboto) plus the system MONOSPACE for all
+  technical meta — that second face is a defining part of the look.
+  All sizes in sp, never dp (§4.7, §15.3).
+-->
+<resources>
+
+    <style name="TextAppearance.Morsecode" parent="TextAppearance.AppCompat">
+        <item name="android:textColor">?attr/colorTextPrimary</item>
+    </style>
+
+    <!-- screen title: 20 sp medium -->
+    <style name="TextAppearance.Morsecode.ScreenTitle">
+        <item name="android:textSize">20sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- section header: 11 sp medium, UPPERCASE, +0.08 em, text/secondary -->
+    <style name="TextAppearance.Morsecode.SectionHeader">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">?attr/colorTextSecondary</item>
+    </style>
+
+    <!-- list item title: 15 sp medium -->
+    <style name="TextAppearance.Morsecode.ItemTitle">
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- list item meta: 12 sp MONO, text/meta -->
+    <style name="TextAppearance.Morsecode.ItemMeta">
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">?attr/colorTextMeta</item>
+    </style>
+
+    <!-- state chip: 10 sp MONO, UPPERCASE, +0.06 em -->
+    <style name="TextAppearance.Morsecode.StateChip">
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+    </style>
+
+    <!-- body / FAQ answer: 14 sp regular, 1.45 line height -->
+    <style name="TextAppearance.Morsecode.Body">
+        <item name="android:textSize">14sp</item>
+        <item name="android:lineSpacingMultiplier">1.45</item>
+        <item name="android:textColor">?attr/colorTextSecondary</item>
+    </style>
+
+    <!-- button label: 14 sp medium, sentence case -->
+    <style name="TextAppearance.Morsecode.Button">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- stat tile value: 20 sp bold, accent -->
+    <style name="TextAppearance.Morsecode.StatValue">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">?attr/colorAccentMain</item>
+    </style>
+
+    <!-- stat tile label: 9 sp MONO, UPPERCASE, text/meta -->
+    <style name="TextAppearance.Morsecode.StatLabel">
+        <item name="android:textSize">9sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textColor">?attr/colorTextMeta</item>
+    </style>
+
+    <!-- log line: 11 sp MONO -->
+    <style name="TextAppearance.Morsecode.LogLine">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">monospace</item>
+    </style>
+
+    <!-- Long file names use MIDDLE ellipsis so the extension always stays visible (§4.7). -->
+    <style name="Widget.Morsecode.FileName" parent="android:Widget.TextView">
+        <item name="android:textAppearance">@style/TextAppearance.Morsecode.ItemTitle</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:ellipsize">middle</item>
+    </style>
+</resources>

@@ -124,7 +124,8 @@ def check_resource_refs(defined: set[str]) -> None:
     sources.append(os.path.join(APP, "AndroidManifest.xml"))
     sources += list(walk(os.path.join(APP, "java"), (".kt",)))
     ref_re = re.compile(r'[@?](?!\+)(?:android:)?([a-z]+)/([A-Za-z0-9_.]+)')
-    kt_ref_re = re.compile(r'\bR\.([a-z]+)\.([A-Za-z0-9_]+)')
+    # `android.R.*` is the platform's, not ours; only local R references are checked.
+    kt_ref_re = re.compile(r'(?<!android\.)\bR\.([a-z]+)\.([A-Za-z0-9_]+)')
     for path in sources:
         if not os.path.exists(path):
             continue
@@ -134,7 +135,9 @@ def check_resource_refs(defined: set[str]) -> None:
         for lineno, line in enumerate(text.splitlines(), 1):
             if path.endswith(".kt"):
                 for kind, name in kt_ref_re.findall(line):
-                    if f"{kind}/{name}" not in defined:
+                    # R field names replace '.' with '_'; styles are declared dotted.
+                    candidates = {f"{kind}/{name}", f"{kind}/{name.replace('_', '.')}"}
+                    if not (candidates & defined):
                         fail(path, lineno, f"unresolved resource reference R.{kind}.{name}")
                 continue
             for match in ref_re.finditer(line):

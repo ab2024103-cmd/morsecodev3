@@ -28,6 +28,7 @@
         <item name="colorInkOnAccent">@color/ink_on_accent</item>
 
         <!-- Light-mode cards carry a 1 dp border AND a 2 dp/4% soft shadow (§4.3). -->
+        <item name="isLightSurface">true</item>
         <item name="cardElevation">@dimen/card_elevation_light</item>
 
         <!-- AppCompat plumbing mapped onto the same tokens. -->
@@ -40,5 +41,25 @@
         <item name="android:windowBackground">@color/bg_base</item>
         <item name="android:statusBarColor" tools:targetApi="21">@color/bg_base</item>
         <item name="android:navigationBarColor" tools:targetApi="21">@color/bg_base</item>
+    </style>
+
+    <!--
+      §4.8 dialog radius 20 dp; §4.2/§4.3 scrim (62% black in dark, 38% ink in
+      light, applied by the platform dim). Floating window so the consent card
+      sits centred over a dimmed screen (§6.16).
+    -->
+    <style name="Theme.Morsecode.Dialog" parent="Theme.Morsecode">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.62</item>
+        <item name="android:windowMinWidthMajor">80%</item>
+        <item name="android:windowMinWidthMinor">90%</item>
+    </style>
+
+    <!-- §4.11: sheets spring in over 220 ms. -->
+    <style name="Animation.Morsecode.BottomSheet" parent="@android:style/Animation.Dialog">
+        <item name="android:windowEnterAnimation">@anim/sheet_enter</item>
+        <item name="android:windowExitAnimation">@anim/sheet_exit</item>
     </style>
 </resources>

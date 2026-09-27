@@ -1,7 +1,7 @@
 package app.morsecode.android
 
 import android.app.Application
-import androidx.appcompat.app.AppCompatDelegate
+import app.morsecode.android.core.ui.Themes
 import app.morsecode.android.core.util.Ids
 import app.morsecode.android.di.AppServices
 
@@ -19,10 +19,9 @@ class MorsecodeApp : Application() {
 
         installCrashHandler()
 
-        // Theme bootstrap. §4.1: first run resolves to the system setting; if
-        // the system has no preference, Dark. The stored Light/Dark/Follow
-        // system choice is read here once Prefs exists (Stage 2).
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        // Theme bootstrap (§4.1). Prefs resolves first run to the system
+        // setting, or Dark when the system has no preference.
+        Themes.applyNightMode(AppServices.prefs)
 
         AppServices.logStore.i("${Ids.logHeader(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)} started")
     }

@@ -17,6 +17,7 @@
         <item name="colorAccentDeep">@color/accent_sunflower_deep</item>
         <item name="colorInkOnAccent">@color/ink_on_accent</item>
 
+        <item name="isLightSurface">false</item>
         <item name="cardElevation">@dimen/card_elevation_dark</item>
 
         <item name="colorPrimary">@color/accent_sunflower</item>

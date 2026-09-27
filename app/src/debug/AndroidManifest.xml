@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only additions. The component gallery (build plan, Stage 2) renders
+  every §4.12 component in both themes, all five accents and at 320/360/600 dp.
+  It exists in the debug variant only and is not part of §5.1's information
+  architecture.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".feature.gallery.ComponentGalleryActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|uiMode"
+            android:exported="true"
+            android:label="@string/gallery_label"
+            android:theme="@style/Theme.Morsecode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

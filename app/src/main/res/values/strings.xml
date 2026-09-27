@@ -7,4 +7,61 @@
 <resources>
     <!-- Launcher label and product name: one word, capital M only (§1.1). -->
     <string name="app_name">Morsecode</string>
+
+    <!-- ===== Bottom navigation (§4.12f, §5.1) ===== -->
+    <string name="nav_connect">Connect</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- ===== Transport badges (Appendix A · Connect) ===== -->
+    <string name="badge_lan">LAN</string>
+    <string name="badge_web">WEB</string>
+    <string name="badge_nearby">NEARBY</string>
+    <string name="badge_from">FROM</string>
+
+    <!-- ===== State chips (Appendix A · Transfer). Never colour alone (§4.13). ===== -->
+    <string name="chip_queued">QUEUED</string>
+    <string name="chip_sending">SENDING</string>
+    <string name="chip_receiving">RECEIVING</string>
+    <string name="chip_recv">RECV</string>
+    <string name="chip_paused">PAUSED</string>
+    <string name="chip_done">DONE</string>
+    <string name="chip_failed">FAILED</string>
+    <string name="chip_skipped">SKIPPED</string>
+    <string name="chip_queue">QUEUE</string>
+
+    <!-- ===== Five-tile action bar (§4.12e, §6.4) ===== -->
+    <string name="action_choose">Choose</string>
+    <string name="action_queue">Queue</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_minimize">Minimize</string>
+    <string name="action_end">End</string>
+
+    <!-- ===== Summary card (§4.12c, §6.4, §6.6) ===== -->
+    <string name="summary_batch_in_progress">Batch in progress</string>
+    <string name="summary_batch_complete">✓ Batch complete</string>
+
+    <!-- ===== Consent dialogs (§6.16) ===== -->
+    <string name="consent_peer_title">Connection request</string>
+    <string name="consent_peer_body">%1$s wants to send you files.</string>
+    <string name="consent_browser_title">Browser wants access</string>
+    <string name="consent_browser_body">A browser session wants to browse your phone.</string>
+    <string name="consent_reject">Reject</string>
+    <string name="consent_accept">Accept</string>
+
+    <!-- ===== Radar (§6.2, §4.11) ===== -->
+    <string name="radar_searching">Searching…</string>
+
+    <!-- ===== Content descriptions for icon-only controls (§15.1) ===== -->
+    <string name="cd_dismiss_tip">Dismiss hint</string>
+    <string name="cd_cancel_item">Cancel %1$s</string>
+    <string name="cd_peer_avatar">Device %1$s</string>
+    <string name="cd_file_type_icon">File type</string>
+    <string name="cd_empty_state_icon">Nothing here yet</string>
+    <string name="cd_drag_handle">Drag to resize the sheet</string>
+    <string name="cd_consent_icon">Request</string>
+
+    <!-- ===== Formatting scaffolding (§4.7 mono meta lines) ===== -->
+    <string name="meta_dot_separator">%1$s · %2$s</string>
 </resources>

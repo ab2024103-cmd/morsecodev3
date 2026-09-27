@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.14 small tablet / split-screen: wider gutters, capped content width. -->
+<resources>
+    <dimen name="screen_padding">24dp</dimen>
+    <dimen name="grid_cell_target">132dp</dimen>
+    <dimen name="content_max_width">720dp</dimen>
+</resources>

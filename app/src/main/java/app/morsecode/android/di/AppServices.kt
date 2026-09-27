@@ -1,7 +1,9 @@
 package app.morsecode.android.di
 
 import android.content.Context
+import app.morsecode.android.core.data.Prefs
 import app.morsecode.android.core.logging.LogStore
+import app.morsecode.android.core.util.DeviceTier
 
 /**
  * Manual service locator (§3.1): no DI framework, no annotation processors.
@@ -18,6 +20,11 @@ object AppServices {
     val context: Context get() = appContext
 
     val logStore: LogStore by lazy { LogStore(appContext) }
+
+    val prefs: Prefs by lazy { Prefs(appContext) }
+
+    /** §13 tiering: scales work, never functionality. */
+    val deviceTier: DeviceTier by lazy { DeviceTier(appContext) }
 
     fun init(context: Context) {
         appContext = context.applicationContext
