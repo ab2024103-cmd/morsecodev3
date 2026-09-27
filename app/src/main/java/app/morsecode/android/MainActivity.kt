@@ -18,6 +18,7 @@ import app.morsecode.android.core.ui.Nav
 import app.morsecode.android.core.ui.Navigator
 import app.morsecode.android.core.ui.Screen
 import app.morsecode.android.core.ui.Themes
+import app.morsecode.android.core.util.ConsentNotifications
 import app.morsecode.android.databinding.ActivityMainBinding
 import app.morsecode.android.di.AppServices
 import app.morsecode.android.feature.dashboard.DashboardFragment
