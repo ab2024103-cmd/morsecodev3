@@ -332,3 +332,66 @@ Then close the gaps you recorded yourself at the end of Stage 17:
   - ThumbnailStore eviction
 Each one lands with the test that proves it, and the §22 line it touches.
 ```
+
+---
+
+### Stage 21 — the real-device bug list (run AFTER 18–20)
+
+Reported from an Android 6 (MYA-L10) and a current phone. Spec clauses for all of
+these are new — pull `docs/prompmaster.txt` first: §4.16, §4.13 icon rule, §6.3
+transport row, §6.11.0, §16.6, §20.10a, §7.6a, §7.6b, §20.8 additions, A36–A42.
+
+```text
+Stage 21 of the plan: fix the defects found on real hardware. Pull
+docs/prompmaster.txt first — §4.16, §4.13's icon rule, §6.3's transport row,
+§6.11.0, §16.6, §20.10a, §7.6a, §7.6b, the new §20.8 lint checks and A36–A42
+are all new and binding.
+
+P0 — CRASHES (nothing else matters until these are gone)
+1. Android 6 (API 23): tapping the Files tab exits the app. Get the stack
+   trace first (adb logcat, or the §16.6 crash file), then fix the cause. The
+   usual suspects, in order: a MediaStore query running before
+   READ_EXTERNAL_STORAGE is granted; a Java-8 default collection method
+   (removeIf/putIfAbsent/computeIfAbsent) or java.time without desugaring —
+   §3.2 forbids both and §20.8 was supposed to catch them, so the gate is
+   broken too and must be fixed in the same change; app:srcCompat/vector
+   inflation; or a lambda in a layout-inflated view. Add a regression test.
+2. The music player crashes on some files. Implement §6.11.0: error listener
+   before open, guarded prepare, snackbar + skip, never a throw. Feed it a
+   truncated file, a zero-byte file, a DRM file and an exotic codec.
+3. Any other crash: reproduce, capture, fix, test. Report each with its trace.
+
+P1 — THINGS THAT DO NOT WORK
+4. Discovery finds nothing on either transport. Diagnose before patching:
+   is the UDP beacon sending, is the multicast lock held, is the socket bound
+   to the right interface, does the network isolate clients, is Location
+   granted and on (Nearby needs it on API 23), is Play Services present? Then
+   implement §6.3's transport status row so the app SAYS which transport is
+   live and why the other is not — with a fix button. A radar spinning while
+   nothing is listening is a lie (§20.6).
+5. WebShare sticks on "Waiting for approval" after the phone approves.
+   Implement §7.6a: one session id minted on first contact and echoed
+   everywhere, the token attached to every later request, no-store on the
+   poll, advance within ~1 s, and a 20-second self-explaining timeout.
+6. The browser toolbar shows broken-image glyphs. That is §7.6b: an asset the
+   HTML references is not packaged. Inline the SVGs or package them, then add
+   the CI check that every href/src/url() resolves and every page loads with
+   zero 404s.
+7. Screens that say "not yet available" are shipping. §20.10a: finish them or
+   make them unreachable, and add the lint check.
+
+P2 — LOOK AND FEEL
+8. Blurry photo grid and blurry opened photo: implement §4.16. Decode for the
+   target in PIXELS, never upscale a mini-thumbnail into the viewer, decode the
+   original in the viewer, cross-fade for at most ~150 ms.
+9. Invisible icons in the viewer and video player (volume, info and others):
+   §4.13's icon rule — on-black ramp, app:tint on AppCompat widgets, ≥ 3:1
+   contrast, verified on a §21.3 screenshot in both themes.
+10. Apps, Music and Files tabs do not match docs/ui-simulator.html. Run the
+    §4.15 fidelity pass on those three first, then the rest.
+
+DELIVERABLE
+For every item: the trace or screenshot that proved it, the fix, the test that
+keeps it fixed, and the A36–A42 line it settles. Report P0 as soon as it is
+done — do not wait for P2.
+```
