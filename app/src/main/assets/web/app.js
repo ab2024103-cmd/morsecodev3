@@ -89,6 +89,7 @@ async function boot() {
   $('device-name').textContent = state.info.device || 'Phone';
   $('device-address').textContent = location.host + ' · WebShare session';
   await refreshCounts();
+  listenForOffers();
   go('home');
 }
 
@@ -116,11 +117,17 @@ function go(page) {
 
 const keyOf = (entry) => entry.path || entry.name;
 
+/*
+ * A31: "Scroll a long list to the middle, tick an item: the view does not
+ * move." Ticking therefore PATCHES the affected nodes and the bar; it never
+ * re-renders the page, because re-rendering resets scrollTop and loses the
+ * place someone was reading.
+ */
 function toggle(entry) {
   const key = keyOf(entry);
   if (state.selection.has(key)) state.selection.delete(key);
   else state.selection.set(key, entry);
-  render();
+  patchSelection();
 }
 
 function selectAll(entries) {
@@ -129,19 +136,62 @@ function selectAll(entries) {
     if (all) state.selection.delete(keyOf(entry));
     else state.selection.set(keyOf(entry), entry);
   }
-  render();
+  patchSelection();
 }
 
-function selectionBar() {
-  if (state.selection.size === 0) return '';
+/** Repaints only what selection changed: the ticks, the rows and the bar. */
+function patchSelection() {
+  for (const tile of document.querySelectorAll('.tile[data-key]')) {
+    const selected = state.selection.has(tile.dataset.key);
+    tile.setAttribute('aria-selected', selected);
+    const check = tile.querySelector('[data-check]');
+    if (check) check.setAttribute('aria-checked', selected);
+  }
+  for (const box of document.querySelectorAll('input[data-check], input[data-fcheck]')) {
+    const key = box.dataset.check || box.dataset.fcheck;
+    const selected = state.selection.has(key);
+    box.checked = selected;
+    const row = box.closest('tr');
+    if (row) row.setAttribute('aria-selected', selected);
+  }
+  for (const label of document.querySelectorAll('.selected-count')) {
+    label.textContent = `${state.selection.size} selected`;
+  }
+  for (const button of document.querySelectorAll('[data-selectall]')) {
+    const group = (state.groups || []).find((g) => g.title === button.dataset.selectall);
+    if (group) {
+      button.textContent = group.items.every((i) => state.selection.has(keyOf(i)))
+        ? '✓ Selected' : 'Select all';
+    }
+  }
+  paintSelectionBar();
+}
+
+/** The bar is created once and updated in place, never re-inserted. */
+function paintSelectionBar() {
+  let bar = document.getElementById('selbar');
+  if (state.selection.size === 0) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'selbar';
+    bar.className = 'selbar';
+    $('page').appendChild(bar);
+  }
   const total = [...state.selection.values()].reduce((sum, entry) => sum + (entry.size || 0), 0);
-  return `<div class="selbar">
-    <strong>${state.selection.size} selected</strong>
+  bar.innerHTML = `<strong>${state.selection.size} selected</strong>
     <span class="mono">${fmtSize(total)}</span>
     <button class="btn-outline" data-act="download">⇓ Download</button>
     <button class="btn-accent" data-act="zip">⇊ Download as zip</button>
-    <button class="btn-outline" data-act="clear">Clear</button>
-  </div>`;
+    <button class="btn-outline" data-act="clear">Clear</button>`;
+  wireBar(bar);
+}
+
+/** Rendered once per page build; afterwards [paintSelectionBar] patches it. */
+function selectionBar() {
+  return '';
 }
 
 /** A21: [Download] fetches each file directly; one plain download for one file. */
@@ -239,6 +289,7 @@ async function renderGallery(root, page) {
   }
   const shown = state.folder ? state.items.filter((i) => i.folder === state.folder) : state.items;
   const groups = groupByDay(shown);
+  state.groups = groups;
 
   root.innerHTML = `
     <div class="toolbar">
@@ -267,6 +318,7 @@ async function renderGallery(root, page) {
     ${selectionBar()}`;
 
   wireSelection(root, shown, groups);
+  paintSelectionBar();
   for (const row of root.querySelectorAll('[data-folder]')) {
     row.onclick = () => { state.folder = row.dataset.folder || null; render(); };
   }
@@ -321,11 +373,11 @@ function wireSelection(root, items, groups) {
 }
 
 function wireBar(root) {
-  for (const button of root.querySelectorAll('[data-act]')) {
+  for (const button of (root || document).querySelectorAll('[data-act]')) {
     button.onclick = () => {
       if (button.dataset.act === 'download') downloadSelection();
       if (button.dataset.act === 'zip') downloadZip();
-      if (button.dataset.act === 'clear') { state.selection.clear(); render(); }
+      if (button.dataset.act === 'clear') { state.selection.clear(); patchSelection(); }
     };
   }
 }
@@ -539,26 +591,108 @@ function closePlayer() {
   $('player').hidden = true;
 }
 
-/** §7.6's page; the element is removed from the DOM on close, never hidden. */
+/**
+ * §7.6 THE IN-BROWSER VIDEO PLAYER. Route /video/<name>, the rail kept, a top
+ * bar with back / name / mono meta / download, a 16:9 stage, and the SAME seek
+ * contract as every other player (A32): tap-to-seek, a draggable knob, labels
+ * that follow the thumb, the clock yielding during a drag, and a commit that
+ * sets currentTime — which issues a fresh Range request answered with 206.
+ *
+ * Closing REMOVES the element from the DOM. A hidden <video> keeps playing
+ * audio with nothing on screen to stop it (§7.6).
+ */
 function openVideo(item) {
+  history.replaceState(null, '', `/video/${encodeURIComponent(item.name)}`);
   const root = $('page');
   root.innerHTML = `
     <div class="toolbar">
-      <button class="row-btn" id="video-back">‹ Back</button>
+      <button class="row-btn" id="video-back" aria-label="Back">‹</button>
       <strong>${item.name}</strong>
       <span class="mono">${fmtSize(item.size)} · ${fmtDuration(item.duration)}</span>
-      <button class="btn-outline" id="video-download">⇓ Download</button>
+      <button class="btn-outline" id="video-download" style="margin-left:auto">⇓ Download</button>
     </div>
-    <video id="video" controls playsinline style="width:100%;background:#000;border-radius:16px"
-           src="/stream?path=${encodeURIComponent(keyOf(item))}&token=${state.token}"></video>`;
-  $('video-back').onclick = () => {
-    const video = $('video');
-    if (video) { video.pause(); video.remove(); }
-    render();
+    <div class="stage">
+      <video id="video" playsinline preload="metadata"
+             src="/stream?path=${encodeURIComponent(keyOf(item))}&token=${state.token}"></video>
+    </div>
+    <div class="player-seek">
+      <input id="video-range" class="seek" type="range" min="0" max="1000" value="0"
+             aria-label="Playback position" />
+      <div class="player-clocks mono"><span id="video-elapsed">0:00</span><span id="video-total">0:00</span></div>
+    </div>
+    <div class="toolbar" role="group" aria-label="Playback controls">
+      <button class="icon-btn" id="video-back10" aria-label="Back 10 seconds">↺10</button>
+      <button class="btn-accent" id="video-play" aria-label="Play">▶</button>
+      <button class="icon-btn" id="video-fwd10" aria-label="Forward 10 seconds">10↻</button>
+      <label class="volume"><span aria-hidden="true">🔊</span>
+        <input id="video-volume" type="range" min="0" max="100" value="100" aria-label="Volume" /></label>
+      <button class="icon-btn" id="video-cc" aria-label="Subtitles" disabled
+              title="No subtitles">CC</button>
+    </div>`;
+
+  const video = $('video');
+  const range = $('video-range');
+  let scrubbing = false;
+
+  const paint = () => {
+    if (!video.duration) return;
+    if (!scrubbing) range.value = Math.round((video.currentTime / video.duration) * 1000);
+    $('video-elapsed').textContent = fmtClock(video.currentTime);
+    $('video-total').textContent = fmtClock(video.duration);
+  };
+  const seekTo = (seconds) => {
+    // Clamped at both ends; ±10 never wraps around (§6.11, A32).
+    video.currentTime = Math.min(Math.max(0, seconds), video.duration || 0);
+    paint();
+  };
+
+  video.addEventListener('loadedmetadata', paint);
+  video.addEventListener('timeupdate', paint);
+  video.addEventListener('play', () => { $('video-play').textContent = '❚❚'; });
+  video.addEventListener('pause', () => { $('video-play').textContent = '▶'; });
+
+  range.oninput = () => {
+    // The clock stops driving the bar while a finger is down.
+    scrubbing = true;
+    if (video.duration) {
+      $('video-elapsed').textContent = fmtClock((range.value / 1000) * video.duration);
+    }
+  };
+  range.onchange = () => {
+    scrubbing = false;
+    if (video.duration) seekTo((range.value / 1000) * video.duration);
+  };
+
+  $('video-play').onclick = () => (video.paused ? video.play() : video.pause());
+  $('video-back10').onclick = () => seekTo(video.currentTime - 10);
+  $('video-fwd10').onclick = () => seekTo(video.currentTime + 10);
+  // A real volume control bound to .volume, never a bare mute button (§6.11).
+  $('video-volume').oninput = (event) => {
+    video.volume = event.target.value / 100;
+    video.muted = video.volume === 0;
   };
   $('video-download').onclick = () => {
     window.location = `/download?path=${encodeURIComponent(keyOf(item))}&token=${state.token}`;
   };
+  $('video-back').onclick = () => {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.remove();
+    history.replaceState(null, '', '/');
+    render();
+  };
+  document.addEventListener('keydown', videoKeys);
+  function videoKeys(event) {
+    if (!document.body.contains(video)) {
+      document.removeEventListener('keydown', videoKeys);
+      return;
+    }
+    if (event.key === 'ArrowLeft') seekTo(video.currentTime - 5);
+    if (event.key === 'ArrowRight') seekTo(video.currentTime + 5);
+    if (event.key === 'Home') seekTo(0);
+    if (event.key === 'End') seekTo(video.duration);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,7 +702,8 @@ function openVideo(item) {
 const CHUNK = 4 * 1024 * 1024;
 
 async function uploadFiles(files) {
-  for (const file of files) await uploadOne(file);
+  // §7.7: multiple concurrent uploads are allowed; INV-6 keeps ONE progress UI.
+  await Promise.all([...files].map((file) => uploadOne(file)));
   await refreshCounts();
 }
 
@@ -582,10 +717,19 @@ async function uploadOne(file) {
     start = status.nextIndex || 0;
   } catch (error) { start = 0; }
 
-  state.uploads.set(id, { name: file.name, sent: start * CHUNK, total: file.size });
+  const entry = state.uploads.get(id) || { name: file.name, sent: start * CHUNK, total: file.size };
+  entry.paused = false;
+  entry.cancelled = false;
+  entry.file = file;
+  entry.id = id;
+  state.uploads.set(id, entry);
   paintTray();
 
   for (let index = start; index < chunks; index++) {
+    if (entry.cancelled) { state.uploads.delete(id); paintTray(); return; }
+    // Pause means "stop sending chunks" — the bytes already accepted stay,
+    // and resume asks the server where to continue (§7.7).
+    while (entry.paused) await new Promise((resolve) => setTimeout(resolve, 200));
     const blob = file.slice(index * CHUNK, Math.min(file.size, (index + 1) * CHUNK));
     const body = new FormData();
     body.append('content', blob, file.name);
@@ -593,8 +737,7 @@ async function uploadOne(file) {
                   `&index=${index}&last=${index === chunks - 1}`;
     const response = await api(`/upload?${query}`, { method: 'POST', body });
     const result = await response.json();
-    const entry = state.uploads.get(id);
-    // The server reports the ACTUAL bytes written, never a guess (§7.2).
+    // The server reports the ACTUAL bytes written, never a guess (§7.2, A14).
     entry.sent = result.bytes;
     paintTray();
   }
@@ -602,16 +745,88 @@ async function uploadOne(file) {
   paintTray();
 }
 
+/**
+ * INV-6 / §7.7: EXACTLY ONE upload progress UI — the transfer tray, listing
+ * every in-flight upload and every incoming push offer, each with its own
+ * controls. There is no second progress bar anywhere in the site.
+ */
 function paintTray() {
   const tray = $('tray');
-  const items = [...state.uploads.values()];
-  tray.hidden = items.length === 0;
-  $('tray-items').innerHTML = items.map((item) => `
-    <div class="tray-item">
-      <div>${item.name}</div>
-      <div class="bar"><i style="width:${Math.min(100, (item.sent / item.total) * 100)}%"></i></div>
-      <div class="mono">${fmtSize(item.sent)} / ${fmtSize(item.total)}</div>
-    </div>`).join('');
+  const uploads = [...state.uploads.values()];
+  const offers = state.offers || [];
+  tray.hidden = uploads.length === 0 && offers.length === 0;
+  $('tray-items').innerHTML =
+    offers.map((offer) => `
+      <div class="tray-item">
+        <div>⇩ ${offer.name}</div>
+        <div class="mono">${fmtSize(offer.size)} · from the phone</div>
+        <div>
+          <button class="row-btn" data-offer-accept="${offer.id}">Download</button>
+          <button class="row-btn" data-offer-dismiss="${offer.id}">Dismiss</button>
+        </div>
+      </div>`).join('') +
+    uploads.map((item) => `
+      <div class="tray-item">
+        <div>${item.name}</div>
+        <div class="bar"><i style="width:${Math.min(100, (item.sent / item.total) * 100)}%"></i></div>
+        <div class="mono">${fmtSize(item.sent)} / ${fmtSize(item.total)}</div>
+        <div>
+          <button class="row-btn" data-upload-pause="${item.id}">
+            ${item.paused ? 'Resume' : 'Pause'}</button>
+          <button class="row-btn" data-upload-cancel="${item.id}">Cancel</button>
+        </div>
+      </div>`).join('');
+
+  for (const button of $('tray-items').querySelectorAll('[data-upload-pause]')) {
+    button.onclick = () => {
+      const item = state.uploads.get(button.dataset.uploadPause);
+      if (item) { item.paused = !item.paused; paintTray(); }
+    };
+  }
+  for (const button of $('tray-items').querySelectorAll('[data-upload-cancel]')) {
+    button.onclick = () => {
+      const item = state.uploads.get(button.dataset.uploadCancel);
+      if (item) item.cancelled = true;
+    };
+  }
+  for (const button of $('tray-items').querySelectorAll('[data-offer-accept]')) {
+    button.onclick = () => acceptOffer(button.dataset.offerAccept);
+  }
+  for (const button of $('tray-items').querySelectorAll('[data-offer-dismiss]')) {
+    button.onclick = () => dismissOffer(button.dataset.offerDismiss);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// §7.8 push (phone → browser): an SSE offer becomes a card in the same tray
+// ---------------------------------------------------------------------------
+
+function listenForOffers() {
+  if (!window.EventSource) return;
+  const source = new EventSource(`/api/events?token=${state.token}`);
+  source.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      state.offers = data.offers || [];
+      paintTray();
+    } catch (error) { /* a malformed frame must not break the page */ }
+  };
+  source.onerror = () => { source.close(); setTimeout(listenForOffers, 3000); };
+}
+
+async function acceptOffer(id) {
+  const response = await api(`/api/push-accept?offer=${encodeURIComponent(id)}`);
+  const data = await response.json();
+  // The same Range-capable endpoint every other download uses (§7.8).
+  window.location = `${data.url}&token=${state.token}`;
+  state.offers = (state.offers || []).filter((offer) => offer.id !== id);
+  paintTray();
+}
+
+async function dismissOffer(id) {
+  await api(`/api/push-dismiss?offer=${encodeURIComponent(id)}`);
+  state.offers = (state.offers || []).filter((offer) => offer.id !== id);
+  paintTray();
 }
 
 // ---------------------------------------------------------------------------

@@ -30,6 +30,9 @@ class WebShareController(
 
     val sessions = WebSessions()
 
+    /** §7.8 the phone → browser offers, shared with the WebPeerTransport. */
+    val offers = PushOffers()
+
     private val runningFlow = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> get() = runningFlow
 
@@ -51,6 +54,7 @@ class WebShareController(
             library = library,
             destinations = destinations,
             sessions = sessions,
+            offers = offers,
             logStore = logStore,
             onConsentNeeded = { session -> onConsentNeeded(session) },
         )
@@ -74,10 +78,13 @@ class WebShareController(
         runningFlow.value = false
         addressFlow.value = null
         sessions.clear()
+        // §7.8: an offer outlives neither the session nor the server.
+        offers.clear()
         logStore?.i("WebShare stopped by the user")
     }
 
     fun revoke(sessionId: String) {
+        offers.cancelSession(sessionId, "session revoked")
         sessions.revoke(sessionId)
         logStore?.i("WebShare session revoked")
     }

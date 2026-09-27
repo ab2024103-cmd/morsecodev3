@@ -123,6 +123,20 @@ object AppServices {
         }
     }
 
+    /**
+     * §11.4: an accepted browser is a peer like any other, so the engine needs
+     * no special case for it (§7.8, G11).
+     */
+    val webPeerTransport: app.morsecode.android.core.network.WebPeerTransport by lazy {
+        app.morsecode.android.core.network.WebPeerTransport(
+            sessions = webShare.sessions,
+            offers = webShare.offers,
+            onPeerFound = { peer -> discovery.publish(peer) },
+            onPeerLost = { id -> discovery.forget(id) },
+            logStore = logStore,
+        )
+    }
+
     /** §10 the broadcast engine: one queue fanned out to N peers. */
     val broadcastEngine: app.morsecode.android.core.transfer.BroadcastEngine by lazy {
         app.morsecode.android.core.transfer.BroadcastEngine(

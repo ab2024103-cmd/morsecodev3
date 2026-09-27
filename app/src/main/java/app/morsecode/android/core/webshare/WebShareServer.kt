@@ -43,6 +43,7 @@ class WebShareServer(
     private val library: MediaLibrary,
     private val destinations: Destinations,
     private val sessions: WebSessions,
+    private val offers: PushOffers = PushOffers(),
     private val logStore: LogStore? = null,
     /** Asked when a new browser appears; suspends until the owner answers. */
     private val onConsentNeeded: suspend (WebSessions.Session) -> Boolean = { true },
@@ -88,7 +89,9 @@ class WebShareServer(
         uri == "/upload" -> guarded(session) { upload(session) }
         uri == "/api/upload-status" -> guarded(session) { uploadStatus(session) }
         uri == "/api/events" -> guarded(session) { web -> events(web) }
-        uri == "/api/push-accept" -> guarded(session) { json(JSONObject().put("ok", true)) }
+        uri == "/api/push-accept" -> guarded(session) { pushAccept(session) }
+        uri == "/api/push-dismiss" -> guarded(session) { pushDismiss(session) }
+        uri == "/push-download" -> guarded(session) { pushDownload(session) }
         else -> noStore(newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_JSON, """{"error":"not found"}"""))
     }
 
@@ -401,6 +404,11 @@ class WebShareServer(
         )
     }
 
+    /**
+     * §7.7: pause means "stop sending chunks" and resume means "ask
+     * /api/upload-status for the last index and continue" — the browser drives
+     * it, so the server's job is only to report the truth about what landed.
+     */
     private fun uploadStatus(http: IHTTPSession): Response {
         val id = http.parameters["id"]?.firstOrNull() ?: return badRequest("id required")
         val state = uploads[id]
@@ -412,12 +420,55 @@ class WebShareServer(
         )
     }
 
-    /** §7.2 SSE. Kept deliberately simple: one event, then the browser polls. */
+    /**
+     * §7.2 / §7.8 SSE: push offers, consent changes and counts. The browser
+     * reconnects on every `retry`, so each response is a snapshot of what is
+     * pending for THIS session — no shared stream, no cross-session leak.
+     */
     private fun events(session: WebSessions.Session): Response {
-        val body = "retry: 4000\n\ndata: ${JSONObject().put("session", session.id)}\n\n"
+        val pending = JSONArray()
+        for (offer in offers.pendingFor(session.id)) pending.put(offer.json())
+        val payload = JSONObject()
+            .put("session", session.id)
+            .put("offers", pending)
+            .put("counts", JSONObject().put("stale", false))
+        val body = "retry: 2000\n\ndata: $payload\n\n"
         val response = newFixedLengthResponse(Response.Status.OK, "text/event-stream", body)
         response.addHeader("Connection", "keep-alive")
         return noStore(response)
+    }
+
+    /** §7.8: the browser pressed [Download] on an incoming card. */
+    private fun pushAccept(http: IHTTPSession): Response {
+        val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
+        val offer = offers.accepted(id) ?: return notFound()
+        return json(offer.json().put("url", "/push-download?offer=$id"))
+    }
+
+    /** §7.8: [Dismiss] cancels the offer — the phone sees Cancelled, not Failed. */
+    private fun pushDismiss(http: IHTTPSession): Response {
+        val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
+        offers.dismissed(id) ?: return notFound()
+        return json(JSONObject().put("ok", true))
+    }
+
+    /**
+     * §7.8: "accepting downloads through the same Range-capable endpoint".
+     * The send completes when the LAST byte has gone out, not when the offer
+     * was accepted — a download the browser abandons must not read as sent.
+     */
+    private fun pushDownload(http: IHTTPSession): Response {
+        val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
+        val offer = offers.get(id) ?: return notFound()
+        val file = File(offer.path)
+        if (!file.exists()) return notFound()
+
+        val response = streamFile(http, file, mimeOf(file))
+        val whole = http.headers["range"] == null ||
+            HttpRange.parse(http.headers["range"], file.length())?.length == file.length()
+        if (whole) offers.delivered(id)
+        response.addHeader("Content-Disposition", "attachment; filename=\"${offer.name}\"")
+        return response
     }
 
     // ----- Plumbing ---------------------------------------------------------
