@@ -58,9 +58,11 @@ class LanLoopbackTest {
     private lateinit var receiverEngine: TransferEngine
 
     @After
-    fun tearDown() = runBlocking {
-        runCatching { receiverTransport.shutdown() }
-        runCatching { senderTransport.shutdown() }
+    fun tearDown() {
+        runBlocking {
+            runCatching { receiverTransport.shutdown() }
+            runCatching { senderTransport.shutdown() }
+        }
         scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
