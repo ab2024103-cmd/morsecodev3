@@ -60,6 +60,16 @@ jobs:
       - name: Unit tests (§21.1)
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # The build machine's artifacts are not reachable from the development
+      # sandbox, so the test tally is carried in the release notes, which are
+      # readable through the API. §22.1 evidence has to be inspectable.
+      - name: Unit test tally (§21.1)
+        id: tests
+        run: |
+          TALLY=$(python3 tools/testtally.py)
+          echo "$TALLY"
+          echo "tally=$TALLY" >> "$GITHUB_OUTPUT"
+
       - name: Assemble debug and release (§19.3)
         run: ./gradlew --no-daemon assembleDebug assembleRelease
 
@@ -90,6 +100,7 @@ jobs:
               echo "  debug key and published as \`-preview-unsigned\`. §19.3 and A18 are NOT"
               echo "  satisfied until KEYSTORE_B64 / KEY_ALIAS / KEY_PASSWORD / STORE_PASSWORD exist."
             fi
+            echo "- Unit tests: ${{ steps.tests.outputs.tally }}"
             echo "- Sizes (budget §19.4: release ~6.5 MB, debug ~8 MB):"
             echo ""
             echo '```'
@@ -109,10 +120,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="ci-$(echo '${{ github.ref_name }}' | tr '/' '-')"
+          NOTES=$(printf '%s\n' \
+            "Rolling CI build of \`${{ github.ref_name }}\` at ${{ github.sha }}." \
+            "" \
+            "- run: ${{ github.run_id }}" \
+            "- unit tests: ${{ steps.tests.outputs.tally }}" \
+            "- lint gate (§20.8): passed" \
+            "- signed with the stable upload key: ${{ steps.signing.outputs.signed }}" \
+            "" \
+            "\`\`\`" \
+            "$(du -h dist/* | sed 's/\t/  /')" \
+            "\`\`\`")
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --prerelease \
               --title "Morsecode CI — ${{ github.ref_name }}" \
-              --notes "Rolling CI build of \`${{ github.ref_name }}\` at ${{ github.sha }}."
+              --notes "$NOTES"
+          else
+            gh release edit "$TAG" --notes "$NOTES"
           fi
           gh release upload "$TAG" dist/*.apk --clobber
