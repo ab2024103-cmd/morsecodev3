@@ -276,15 +276,13 @@ jobs:
             # suite that crashes on API 23 runs LAST and cannot cancel the
             # others; AndroidJUnitRunner honours the order it is given.
             echo "phase=gradle" > script-marker.txt
-            CLASSES=app.morsecode.android.AccentAndSizeTest,app.morsecode.android.ScreenWalkTest,app.morsecode.android.WebShareDeviceTest,app.morsecode.android.LoopbackTransferTest,app.morsecode.android.FilesFlowTest
-            # tee, not redirect: the two runs that completed streamed their
-            # output, and both silent runs were killed mid-build. Keeping the
-            # step talking is apparently what keeps it alive, so the log is
-            # captured AND streamed, and a hang is bounded rather than silent.
-            timeout 25m ./gradlew --no-daemon connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=$CLASSES 2>&1 | tee gradle.log
-            echo "gradle_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
-            tail -60 gradle.log > gradle-tails.txt
+            # EXACTLY the invocation that ran tests in the first two runs.
+            # Three variations on it (per-class loop, class filter, redirect)
+            # each died silently inside Gradle; ordering is solved by the test
+            # class names instead, so the suite that crashes on API 23 runs
+            # last and cannot cancel the others.
+            ./gradlew --no-daemon connectedDebugAndroidTest
+            echo "gradle_exit=$?" >> "$GITHUB_ENV"
 
             echo "phase=sweep" > script-marker.txt
             mkdir -p sweep
@@ -318,7 +316,6 @@ jobs:
           cp -r results emulator-evidence/results 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
           cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt emulator-evidence/ 2>/dev/null || true
-          cp gradle.log emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt

@@ -28,13 +28,18 @@ import org.junit.runner.RunWith
 /**
  * §21.3: "the Files tabs, selection, sort" — on a device.
  *
+ * Named to sort LAST: on API 23 the Files tab crashes the app
+ * (`Comparator.reversed()`, see the Stage 18 report), and a process death
+ * cancels every test after it. Until that defect is fixed, this class runs at
+ * the end so the crash costs one suite rather than five.
+ *
  * The emulator's media store is empty, so this exercises the tab machinery,
  * the sort sheet and the selection basket rather than pretending there are
  * photos to tick. What it proves is that the surfaces open, switch and respond
  * without throwing — which is exactly what had never been checked.
  */
 @RunWith(AndroidJUnit4::class)
-class FilesFlowTest {
+class ZFilesFlowTest {
 
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(
