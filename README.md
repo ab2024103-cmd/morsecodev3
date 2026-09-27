@@ -38,3 +38,26 @@ AndroidX, Google Play Services Nearby Connections and NanoHTTPD, plus the
 Kotlin runtime and coroutines. There is no Material Components dependency:
 the UI is custom lightweight widgets on an AppCompat theme ancestry (§1.5,
 §4.13).
+
+## Status
+
+Stages 1–17 of `docs/STAGES.md` are implemented and CI is green: the lint gate
+(§20.8) passes over 256 files and 227 unit tests run on every push, with both
+APKs published to the rolling prerelease.
+
+**The build is not done in §23's sense, and the reason is written down rather
+than glossed.** `docs/TRACEABILITY.md` carries a verdict for every one of the
+35 acceptance criteria: 2 PASS, 33 BLOCKED, 0 FAIL. Nothing is marked pass on
+the strength of code review — §22.1 classes "shipped but unconfirmed" as
+BLOCKED, and this environment has no phone, no emulator, no browser and no
+TalkBack.
+
+Two things would finish it:
+
+1. **Signing (§19.3, A18).** Add `KEYSTORE_B64`, `KEY_ALIAS`, `KEY_PASSWORD`
+   and `STORE_PASSWORD` as repository secrets. CI already installs them and
+   signs; until they exist it publishes `morsecode-1.0.0-preview-unsigned.apk`
+   and says so. §19.3 forbids inventing a throwaway key, so none was invented.
+2. **The device matrix (§21.2).** `docs/DEVICE_MATRIX.md` is the run sheet:
+   sixteen cases on the reference MYA-L10 and a current phone, plus a laptop
+   browser, each naming the criterion it settles.
