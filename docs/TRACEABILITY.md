@@ -505,3 +505,83 @@ from the new failure report, not from guesswork.
     is a trap any later stage's tests could fall into.
 
 ---
+
+## Stage 6 — LAN transport and unified discovery (§11.1, §11.2, §11.5, §11.6, §17.4)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/network/Discovery.kt` | §11.1, §11.2 | UDP :33457, one announce every 1200 ms, MulticastLock held while discovering, peers expiring after four missed beacons. ONE deduplicated list keyed on device id, which Nearby and WebShare publish into through `publish()`. `preference` (Auto / Wi-Fi LAN / Nearby) only decides which peer Auto dials first — it never hides a peer, because §11.1 forbids a switch that hides half the network. |
+| `core/network/Protocol.kt` | §11.2, §11.6 | Every control message in one place: HELLO, ACCEPT/REJECT, META, ACK, PAUSE_REQ, RESUME_REQ, CANCEL, BYE, PING/PONG, plus the DATA header and status lines. `versionProblem` returns the readable sentence, and the mirror-image sentence when the *peer* is newer. |
+| `core/network/ControlChannel.kt` | §11.2 | One mutex guards every read and every write, and `request()` holds it across write-then-read-reply as one atomic unit. A read timeout returns null — idle is not closed. A `BufferedReader` is used here only because this channel is pure text. |
+| `core/network/LanTransport.kt` | §11.2, §9.8, §11.6 | Serves control and data on the same port and dispatches on the first line, which is always read **byte by byte**. Consent is asked before anything else happens; reject is a clean REJECT with nothing written. The message pump answers META, PAUSE_REQ, CANCEL, PING and BYE. |
+| `core/network/LanSession.kt` | §11.2, §9.3, §9.4 | One data connection **per file**, never reused. Seeks to the receiver's `.part` length and continues the seq numbering; `onProgress` fires only after `writeFrame`'s flush; no socket is ever force-cast to a channel; pause/cancel are checked per chunk and return `Paused`/`Cancelled` without touching other files. |
+| `core/transfer/IncomingFiles.kt` | §9.4, §9.5, §8.2 | Process-scoped receive side. Answers META with §9.5's decision (detection order name → size → sha256, hash computed only when needed) and the resume offset, then appends CRC-checked frames and publishes on verify. A CRC failure discards the partial rather than leaving suspect bytes. |
+| `core/storage/ReceiveSink.kt` | §9.4, §12.1 | `<name>.morsecode.part` → verify → publish, on both storage paths: a real part file on ≤28, and an `IS_PENDING` row whose display name carries the same suffix on 29+, published by one update that renames and clears the flag. |
+| `core/network/SessionRegistry.kt` | §8.1, §6.16 | One live session per peer. Being in here IS the "already trusted in this session" state §6.16 refers to, and it dies with the session. |
+| `core/network/ManualAddress.kt` | §11.5 | `host`, `host:port`, `morsecode://host:port`, IPv6 in brackets; defaults to 33456, validates before dialling, and owns the "Can't reach …" sentence. No QR anywhere. |
+| `core/data/RecentDevices.kt` | §17.4 | A transport id, a name, a transport, a timestamp and a summary — and deliberately nothing that could shorten consent. |
+| `core/transfer/TransferEngine.kt` (extended) | §8.2, §9.6, §20.1 | `registerIncoming` / `incomingProgress` / `incomingResult`: receives land in the SAME queue as sends and finish through the SAME history path. |
+| `di/AppServices.kt` | §3.1 | `discovery`, `lanTransport`, `incomingFiles`, `receiveSinks`, `sessionRegistry`, `recentDevices`, `conflictPolicy`, and a stable per-install `deviceId`. |
+| `app/src/test/.../{LanLoopbackTest,ProtocolTest,RecentDevicesTest}.kt` | §21.1 | 18 new tests, 5 of them over real sockets. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A6** (LAN transfer never fails with "chunk magic mismatch"; byte-by-byte header read present and covered by a unit test) | **PASS** | Stage 5 proved the codec and the header read in isolation; this stage moves real bytes with them. `LanLoopbackTest.aFileCrossesTheWireByteIdentical` sends 600 KB — two full 256 KB frames and a remainder — over loopback TCP through `LanTransport` → `ControlChannel` → `LanSession` → `IncomingFiles`, and asserts the received file's **SHA-256 equals the source's**. Framing never slipped because the accept loop's only reader for a fresh socket is the byte-wise one. Two physical phones remain Stage 17. |
+| **A1** (two phones on the same Wi-Fi: discovery defaults to LAN, a 144 MB video moves at Wi-Fi speed; Nearby peers appear in the same list) | **BLOCKED** | It is a two-phone, real-Wi-Fi measurement. What is executed: the loopback transfer above; `Discovery.preferred` returning the LAN peer under Auto; `ProtocolTest.aPeerIsOneRowWhateverFoundIt` and `Discovery.merge` keeping one row per device id with LAN winning. Throughput on real hardware is Stage 17; Nearby itself is Stage 7. |
+| §11.2 resume from the receiver's `.part` | **PASS** | `aResumedSendContinuesFromThePartFile`: 150 KB pre-written, the ACK reports that offset, the sender seeks, and the finished file is **byte-identical** to the source — which is what proves it appended rather than truncated or restarted. |
+| §9.4 "already present" → SKIPPED | **PASS** | `anIdenticalFileIsSkippedNotResent`: the final file already exists, detection runs name → size → sha256, and the sender gets `SkippedAlreadyPresent("identical file already present on receiver")` with no bytes sent. |
+| §9.8 consent before anything crosses | **PASS** | `aRejectedConnectionYieldsNoSessionAndNoFiles`: no session is returned and the destination directory is empty. |
+| §9.6 both directions through one `complete()` | **PASS** | `theReceiverRecordsHistoryThroughTheSameCompletePath`: a RECEIVING row in history with state COMPLETED, and the item visible in the same queue the UI renders. |
+| §11.6 protocol versioning | **PASS** | `aVersionMismatchIsAReadableSentenceNotAFramingError`, and `LanTransport` sends that sentence as the REJECT reason and surfaces it through `onVersionProblem`. |
+| §11.5 manual pairing, no QR | **PASS** | `ProtocolTest` covers all three accepted forms, the default port, the rejections and the failure sentence. `grep -rn "qr\|zxing\|barcode" app/src/main --include=*.kt -i` → no matches; CAMERA is absent from the manifest (asserted by `ManifestPermissionsTest`). |
+| §17.4 recency shortens discovery, never consent | **PASS** | `nothingStoredCouldEverSkipConsent` asserts the stored fields are exactly id, name, transport, timestamp and summary — there is no token or trust flag for a later change to lean on. |
+| A18 | **PASS** | Gate `PASS — no findings`, 213 files; **113 tests, 0 failed** in run 36301692302. |
+
+### CI evidence
+
+Run **36301692302**, all steps green:
+
+```
+- unit tests: 113 tests, 0 failed, 0 skipped - ... LanLoopbackTest (5), ProtocolTest (9),
+  RecentDevicesTest (4) ...
+```
+
+One earlier run failed and is part of the record: **36301564476**, a JUnit
+class-validation error (`@After` returning a value).
+
+### Not yet done in this stage
+
+- **Nothing is wired to a screen.** Discovery is not started by the dashboard,
+  the consent callback is not connected to `ConsentDialog`, and no session is
+  handed to the engine yet — Stage 8 owns Connect/Discovery/Consent and Stage 9
+  the transfer screens. `LanTransport.consent` currently defaults to accepting,
+  which is safe only because nothing starts the server yet; Stage 8 must set it
+  before `start()` is ever called.
+- PING/PONG is answered but no keepalive is *sent* on a timer; it belongs with
+  the session lifecycle work in Stage 8.
+- §9.5's [Overwrite] / [Skip] / [Keep both] dialog is not raised: the receiver
+  applies the default "Rename duplicates" policy. The ASK branch exists and is
+  unreachable until Stage 9 provides the dialog.
+- The SAF-tree destination path has no sink yet (legacy file and MediaStore do);
+  it lands with the Settings → Storage access screen.
+
+### Deviations and resolved tensions
+
+14. **Control and data share port 33456.** §11.2 names ":33456" for both
+    "Data/serve" and the control connection, so one listener serves both and
+    dispatches on the first line. This makes the byte-by-byte rule structural
+    rather than a convention: the only reader that ever touches a fresh socket
+    is the byte-wise one.
+15. **On API 29+ the `.part` file is an `IS_PENDING` MediaStore row** whose
+    display name still ends in `.morsecode.part`. §9.4's prescribed name and
+    its resumable, visibly-unfinished semantics are preserved; a raw part file
+    in shared storage is simply not something scoped storage permits.
+16. **The receiver's conflict check compares against the FINAL file**, using
+    the `.part` only for the resume offset. §9.5's detection order is
+    unchanged; this just names which file is being detected.
+
+---
