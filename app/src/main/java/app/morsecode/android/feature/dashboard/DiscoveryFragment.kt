@@ -18,6 +18,7 @@ import app.morsecode.android.core.model.DiscoveredPeer
 import app.morsecode.android.core.network.Discovery
 import app.morsecode.android.core.network.ManualAddress
 import app.morsecode.android.core.network.TransportKind
+import app.morsecode.android.core.transfer.BroadcastStats
 import app.morsecode.android.core.ui.Buttons
 import app.morsecode.android.core.ui.Nav
 import app.morsecode.android.core.ui.PeerCardView
@@ -119,7 +120,7 @@ class DiscoveryFragment : Screen() {
         // §6.3: exactly ONE bottom control, and which one is decided by the
         // explicit argument, never by what happens to be queued.
         bottomAction = if (multiSelect) {
-            Buttons.accent(context, getString(R.string.discovery_broadcast_to, 0)) { startBroadcast() }
+            Buttons.accent(context, getString(R.string.broadcast_connect_and_send, 0)) { startBroadcast() }
         } else {
             Buttons.outlined(context, getString(R.string.discovery_manual_ip)) { showManualDialog() }
         }
@@ -257,7 +258,8 @@ class DiscoveryFragment : Screen() {
 
     private fun updateBottomAction() {
         if (!multiSelect) return
-        bottomAction.text = getString(R.string.discovery_broadcast_to, selected.size)
+        // §6.8.1: "the primary button reads [Connect & broadcast to (n)]".
+        bottomAction.text = getString(R.string.broadcast_connect_and_send, selected.size)
     }
 
     private fun connect(peer: DiscoveredPeer) {
@@ -279,13 +281,50 @@ class DiscoveryFragment : Screen() {
         }
     }
 
-    /** A28: picking one phone is refused; two or more opens the sender. */
+    /**
+     * A28 / §6.8.1: picking one phone is refused with a snackbar, and the
+     * sender screen opens only AFTER the peers accept — never straight from
+     * the dashboard, because a broadcast with no chosen peers is meaningless.
+     */
     private fun startBroadcast() {
         if (selected.size < 2) {
             Ui.snackbar(requireActivity(), getString(R.string.discovery_broadcast_needs_two))
             return
         }
-        nav().push(BroadcastFragment.newInstance())
+        // §10.2's cap, and the honest reason for it.
+        val usingNearby = peers.filter { it.deviceId in selected }
+            .any { it.transport == TransportKind.NEARBY }
+        val cap = AppServices.maxBroadcastPeers(usingNearby)
+        BroadcastStats.capNote(
+            requested = selected.size,
+            cap = cap,
+            nearby = usingNearby,
+            lowTier = AppServices.deviceTier.isLowEndDevice,
+        )?.let { Ui.snackbar(requireActivity(), it) }
+
+        val targets = peers.filter { it.deviceId in selected }.take(cap)
+        Ui.snackbar(requireActivity(), getString(R.string.broadcast_connecting, targets.size))
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sessions = ArrayList<app.morsecode.android.core.network.TransportSession>()
+            for (peer in targets) {
+                // Each receiver gets its own consent prompt (§6.8.1); one
+                // refusal greys that row and the rest carry on (INV-B1).
+                val session = AppServices.connections.connect(peer)
+                if (session == null) {
+                    AppServices.broadcastEngine.markRejected(peer.deviceId, peer.name, getString(R.string.discovery_rejected, peer.name))
+                } else {
+                    sessions.add(session)
+                }
+            }
+            if (sessions.isEmpty()) {
+                Ui.snackbar(requireActivity(), getString(R.string.broadcast_none_accepted))
+                return@launch
+            }
+            val held = AppServices.transferEngine.takePendingShare()
+            AppServices.broadcastEngine.start(sessions, held)
+            nav().push(BroadcastFragment.newInstance())
+        }
     }
 
     /** §11.5: host, host:port or a pasted morsecode:// link. No camera. */

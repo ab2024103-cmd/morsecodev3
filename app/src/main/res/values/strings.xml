@@ -151,6 +151,18 @@
     <string name="transfer_end_confirm">End</string>
     <string name="transfer_end_cancel">Keep going</string>
     <string name="transfer_minimized">Transfer minimized · the session keeps running</string>
+    <string name="title_broadcasting">Broadcasting</string>
+    <string name="broadcast_delivering">Delivering</string>
+    <string name="broadcast_delivered_to">DELIVERED TO</string>
+    <string name="broadcast_summary_title">⇶ Broadcasting to %1$d phones</string>
+    <string name="broadcast_summary_detail">%1$d broadcasting · %2$d queued — combined throughput %3$s</string>
+    <string name="broadcast_complete_detail">%1$d deliveries · %2$d failed · %3$d skipped — avg %4$s</string>
+    <string name="broadcast_peer_queued">–</string>
+    <string name="broadcast_peer_failed">This phone did not finish</string>
+    <string name="broadcast_retry_peer">Retry peer</string>
+    <string name="broadcast_connect_and_send">Connect &amp; broadcast to (%1$d)</string>
+    <string name="broadcast_connecting">Connecting to %1$d phones…</string>
+    <string name="broadcast_none_accepted">No phones accepted the broadcast</string>
     <string name="broadcast_empty">No phones in this broadcast yet</string>
     <string name="broadcast_empty_action">Choose phones</string>
 

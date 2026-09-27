@@ -97,6 +97,15 @@ object AppServices {
     /** §6.12 history, written by the engine's single complete() path (§9.6). */
     val historyStore: HistoryStore by lazy { HistoryStore(File(appContext.filesDir, "history.json")) }
 
+    /** §10 the broadcast engine: one queue fanned out to N peers. */
+    val broadcastEngine: app.morsecode.android.core.transfer.BroadcastEngine by lazy {
+        app.morsecode.android.core.transfer.BroadcastEngine(
+            scope = engineScope,
+            history = historyStore,
+            logStore = logStore,
+        )
+    }
+
     /** §9 the single source of truth for queue and session state. */
     val transferEngine: TransferEngine by lazy {
         TransferEngine(

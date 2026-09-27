@@ -252,3 +252,39 @@ data class DiscoveredPeer(
 ) {
     val hostPort: String get() = "$address:$port"
 }
+
+// ---------------------------------------------------------------------------
+// §10 BROADCAST — one queue fanned out to N peers.
+// ---------------------------------------------------------------------------
+
+/**
+ * §10.1: "The queue is authoritative for what is being sent; each
+ * PeerDelivery is authoritative for how far THAT peer has got. The UI never
+ * derives a second copy of either."
+ */
+data class PeerDelivery(
+    val peerId: String,
+    val peerName: String,
+    /** §4.6's avatar colour for this peer, chosen from the device id. */
+    val avatarColor: Int,
+    val sessionState: PeerSessionState,
+    /** Per-file state for this peer only. */
+    val itemStates: Map<String, TransferState> = emptyMap(),
+    /** Per (file, peer) resume offsets — INV-B2. */
+    val resumeOffsets: Map<String, Long> = emptyMap(),
+    val bytesSent: Long = 0,
+    val speedBps: Long = 0,
+    /** INV-B4: true only once every accepted file is verified by this peer. */
+    val verified: Boolean = false,
+    val lastError: String? = null,
+) {
+    val isFinished: Boolean
+        get() = itemStates.isNotEmpty() && itemStates.values.all { it.isTerminal }
+
+    val failedCount: Int get() = itemStates.values.count { it == TransferState.FAILED }
+
+    val completedCount: Int get() = itemStates.values.count { it == TransferState.COMPLETED }
+}
+
+/** §6.8.1: Pending → Accepted → Sending, or Rejected (the row greys out). */
+enum class PeerSessionState { PENDING, ACCEPTED, SENDING, DONE, REJECTED, LOST }
