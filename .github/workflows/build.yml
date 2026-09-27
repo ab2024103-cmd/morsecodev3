@@ -136,7 +136,10 @@ jobs:
             CERTS=$(keytool -printcert -jarfile "$APK" 2>/dev/null || true)
           fi
           FINGERPRINT=$(echo "$CERTS" | grep -i -m1 'SHA-256' | sed 's/.*: *//')
-          SUBJECT=$(echo "$CERTS" | grep -i -m1 'Owner\|Subject DN' | sed 's/.*: *//')
+          # apksigner prints "Signer #1 certificate DN: ..."; keytool prints
+          # "Owner: ...". Matching only one of them left SUBJECT empty and the
+          # debug-certificate guard below vacuous, which is worse than useless.
+          SUBJECT=$(echo "$CERTS" | grep -i -m1 'certificate DN\|^Owner' | sed 's/.*DN: *//; s/^Owner: *//')
           echo "fingerprint=${FINGERPRINT:-unknown}" >> "$GITHUB_OUTPUT"
           echo "subject=${SUBJECT:-unknown}" >> "$GITHUB_OUTPUT"
 
