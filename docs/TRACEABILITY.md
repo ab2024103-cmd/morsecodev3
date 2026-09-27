@@ -1100,3 +1100,78 @@ rendered figure, and the mock specifies the *rendered* figure.
     no session.
 
 ---
+
+## Stage 14 — the WebShare server and site (§7.1–7.5, §7.10, §17.3)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/webshare/WebShareServer.kt` | §7.1, §7.2, §7.10 | NanoHTTPD on 0.0.0.0:33455 with every §7.2 route. The token gate is ONE function every route passes through, so a new endpoint cannot forget it. Every response gets `Cache-Control: no-store`. |
+| `core/webshare/WebShareController.kt` | §7.1 INV-4 | Start and stop, the bound address, the session list. **INV-4 is visible as an absence**: no timer, no screen-off handling, no stop-when-idle path exists in the file. |
+| `core/webshare/WebSessions.kt` | §7.1, §17.3, §6.16b | Pending → accepted (token issued) → revoked, with the token dying on revoke, on stop and on expiry. |
+| `core/webshare/HttpRange.kt` | §7.2, §7.6 | Range parsing for all three forms, clamping, and the exact `Content-Range`. |
+| `core/storage/ZipUtil.kt` | §7.2, §6.9 | ZIP64 streamed through a pipe as it is sent, UTF-8 names, abort on broken pipe. This also gives §6.9's `<folder>.zip` a real archive — the gap left open in Stage 10. |
+| `core/webshare/WebAssets.kt` | §3.4 | The site is read out of the APK. |
+| `assets/web/{index.html,styles.css,app.js}` | §7.3–7.7, §7.9 | The rail with live counts, the header, home's stat cards and storage bar, the drop zone, photo/video folder panels with day-grouped grids, the lightbox, the music table with a closable player bar, docs/apps tables, the file browser with breadcrumbs, one selection basket, and 4 MB resumable uploads with a single tray. Tokens from Appendix B; the accent arrives from `/api/info`. |
+| `feature/webshare/WebShareFragment.kt` | §6.16b, §7.1, §11.5 | Start/Stop, the bare address as tap-to-copy text, sessions with Revoke. No QR. |
+| `app/src/test/.../WebShareTest.kt` | §21.1 | 13 tests, five of them over real HTTP. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A5** (a browser opening the URL triggers the accept/reject popup; rejected gets nothing; accepted gets the full UI and a token-guarded API) | **PASS for the server contract; BLOCKED for the popup on a device** | `anAcceptedBrowserGetsATokenAndARejectedOneGetsNothing` and `aRejectedBrowserIsRefusedEverything` speak **real HTTP to a real socket**: accepted yields a token and 200s, rejected yields `{"state":"rejected"}` and 401 on `/api/counts`, `/api/files` and `/download`. The dialog itself is the same `ConsentRequests` gate Stage 8 tested; seeing it appear on a phone is Stage 17. |
+| **A4** (WebShare stays up after 30+ minutes idle, with the screen off, and while a browser is connected; it stops only when the user stops it) | **BLOCKED** | It is a 30-minute observation on a device. What is verifiable is structural and stated plainly: `WebShareController` contains no timer, no lifecycle observer and no session-count check — `stop()` has exactly two callers, both the user's button. |
+| **A12** (no filename under photo/video tiles; folder panels browsable; the music player survives tab switches and can be closed; exactly one upload progress UI; sticky breadcrumb with clickable segments; the in-browser player streams with Range and is removed from the DOM on close) | **BLOCKED** | A browser is needed. In code: tiles render no filename (only the image, the play glyph, the duration badge and the check), the folder panel is always present on both pages, the `<audio>` element lives on `state` rather than in a page render so a page change cannot destroy it, `closePlayer` removes `src` and calls `load()`, the tray is a single element, the breadcrumb is built from `/api/fs`, and `openVideo`'s back button calls `video.remove()`. |
+| **A20** (✕ stops audio within 200 ms, releases the element, the bar disappears, and moving between pages does not resurrect it) | **BLOCKED** | Same reason. `closePlayer` pauses, removes the `src`, calls `load()` and nulls the reference — there is no hidden element left buffering. |
+| **A21** (per-page selection with live count and size, select-all, [Download] one request each, [⇊ Download as zip] one ZIP64, ticking a video never starts playback) | **BLOCKED** | The basket, the bar, both download paths and the separate check target exist; `aFolderStreamsAsAZipWithItsStructureIntact` and `nonAsciiNamesSurviveTheArchive` execute the archive half, including `Camera/sub/b.txt` ordering and UTF-8 names. |
+| **A22** (every folder row shows a thumbnail of its newest item; quick access lists WhatsApp and Telegram) | **BLOCKED** | The panel renders `<img>` from the newest item of each bucket and the quick list contains WhatsApp and Telegram. The "generated from the same thumbnail cache" clause is **not** satisfied: the browser is served the original file rather than a cached thumbnail — recorded below. |
+| **A27** (clicking any thumbnail opens the lightbox; ‹ › and ← → walk the album; Select feeds the basket; ✕, backdrop and Esc close; no "send to phone" control in the browser's selection bar) | **BLOCKED** | All of it is built, including the keyboard handlers and the backdrop click. The selection bar has exactly three controls — Download, Download as zip, Clear — and no send-to-phone anywhere. |
+| §7.2 Range and 206 | **PASS** | `rangeHeadersParseTheThreeFormsAndClamp`, `anUnsatisfiableRangeIsDetected`, `theContentRangeHeaderIsExact`; the server answers 206 with `Content-Range` and 416 with `bytes */length`. |
+| §17.3 tokens | **PASS** | Four tests: no token before Accept, reject gets nothing, revoke kills it, stop kills all, expiry refuses. |
+| §7.1 no-store on every response | **PASS** | `everyResponseCarriesNoStore` checks `/`, `/api/info`, `/api/counts` and a 404. |
+| §3.4 no CDN | **PASS** | `theSiteIsServedFromTheApkWithNoNetworkDependency` asserts the served HTML contains no `http://` or `https://` at all. |
+| A18 | **PASS** | Gate `PASS — no findings`, 250 files; **203 tests, 0 failed** in run 36323136701. |
+
+### CI evidence
+
+Run **36323136701**, all steps green: 203 tests, 0 failed, including
+`WebShareTest (13)`. One earlier run failed and is part of the record:
+**36322995451**, where the SSE route passed the HTTP session where the web
+session was expected.
+
+### Not yet done in this stage
+
+- **§7.8 push (phone → browser) is not implemented.** `/api/push-accept`
+  answers but nothing offers; the SSE endpoint sends one event and the browser
+  does not subscribe. Stage 15 owns it.
+- **§7.6's custom video player is not built.** `openVideo` uses the browser's
+  native `<video controls>` against `/stream`, which does stream with Range
+  and is removed from the DOM on close — but the prescribed chrome (the
+  draggable bar, replay/forward 10, the volume slider, CC) is Stage 15.
+- **A22's thumbnail cache clause is unmet**: `/thumbnail` serves the original
+  file. On a LAN this looks right and behaves correctly, but §7.2 asks for
+  "sized, server-cached thumbnails (id + mtime key)", and a 4 000-photo grid
+  will move far more bytes than it should. Stage 16's performance pass.
+- `HotspotController` (§7.1's optional hotspot mode) does not exist, so the
+  Doctor's hotspot fact stays false and the STA/AP warning never fires.
+- The upload path writes into the default destination only; a chosen SAF tree
+  is not yet a WebShare upload target (§12.4 requires it to be).
+- SSE is a single event rather than a stream, so counts do not live-update in
+  the browser; the pages refresh on navigation.
+
+### Deviations and resolved tensions
+
+37. **The consent question is answered inside the `/api/hello` request.** The
+    browser's first call suspends on the same `ConsentRequests` gate a phone
+    peer uses, so "nothing crosses before Accept" is one mechanism rather than
+    two. The cost is one held HTTP thread per pending browser, which is bounded
+    by NanoHTTPD's pool and released the moment the phone answers.
+38. **`/thumbnail` serves the original bytes.** Recorded above as a gap rather
+    than presented as a design: it is correct but wasteful.
+39. **The site is plain ES2017 with no build step.** §3.3's dependency budget
+    and "no CDN" make a bundler pointless, and the whole site is three files
+    the server can hand over unchanged.
+
+---
