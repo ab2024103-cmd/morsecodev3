@@ -12,6 +12,8 @@ import app.morsecode.android.core.data.RecentDevices
 import app.morsecode.android.core.network.Discovery
 import app.morsecode.android.core.network.LanTransport
 import app.morsecode.android.core.network.NearbyTransport
+import app.morsecode.android.core.network.ConnectionCoordinator
+import app.morsecode.android.core.network.ConsentRequests
 import app.morsecode.android.core.network.SessionRegistry
 import app.morsecode.android.core.storage.Conflicts
 import app.morsecode.android.core.storage.ReceiveSinkFactory
@@ -160,6 +162,27 @@ object AppServices {
             scope = engineScope,
             deviceId = deviceId,
             deviceName = deviceName,
+            logStore = logStore,
+        )
+    }
+
+    /** §17.2 consent gates, brokered process-wide (§6.16). */
+    val consentRequests: ConsentRequests by lazy { ConsentRequests() }
+
+    /**
+     * Owns discovery, the transports and the live session (§8.2, §3.7).
+     * Its `install()` wires consent BEFORE anything can start listening.
+     */
+    val connections: ConnectionCoordinator by lazy {
+        ConnectionCoordinator(
+            context = appContext,
+            engine = transferEngine,
+            discovery = discovery,
+            lan = lanTransport,
+            nearby = nearbyTransport,
+            sessions = sessionRegistry,
+            consent = consentRequests,
+            recentDevices = recentDevices,
             logStore = logStore,
         )
     }

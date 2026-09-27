@@ -140,6 +140,11 @@
             </intent-filter>
         </activity>
 
+        <!-- §6.16 [GAP]: Accept/Reject from the heads-up notification. -->
+        <receiver
+            android:name=".core.util.ConsentNotifications$ConsentActionReceiver"
+            android:exported="false" />
+
         <!--
           §3.7: a foreground dataSync service owns every active session, so
           minimising, rotating or navigating away never interrupts a transfer.

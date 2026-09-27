@@ -106,6 +106,26 @@
     <string name="dashboard_recent_empty">No recent devices yet</string>
     <string name="dashboard_recent_empty_action">↑ Send</string>
 
+    <!-- ===== Connect / discovery live state (§6.2, §6.3) ===== -->
+    <string name="discovery_devices_found">%1$d devices nearby</string>
+    <string name="discovery_one_device_found">1 device nearby</string>
+    <string name="discovery_transport_title">Transport</string>
+    <string name="discovery_transport_auto">Auto</string>
+    <string name="discovery_transport_nearby">Nearby</string>
+    <string name="discovery_queue_files">%1$d files · %2$s</string>
+    <string name="discovery_manual_title">Manual IP</string>
+    <string name="discovery_manual_hint">host or host:port</string>
+    <string name="discovery_manual_connect">Connect</string>
+    <string name="discovery_connecting">Connecting to %1$s…</string>
+    <string name="discovery_connected">Connected to %1$s</string>
+    <string name="discovery_rejected">%1$s declined the connection</string>
+    <string name="discovery_broadcast_needs_two">Pick at least two phones for a broadcast</string>
+    <string name="discovery_peer_lan">%1$s · Phone · LAN</string>
+    <string name="discovery_peer_nearby">Bluetooth · Phone · Nearby</string>
+    <string name="discovery_peer_web">%1$s · WebShare</string>
+    <string name="discovery_nearby_unavailable">Nearby needs Play Services · searching over Wi-Fi only</string>
+    <string name="cd_select_peer">Select %1$s</string>
+
     <!-- ===== Send · discovery (§6.3) ===== -->
     <string name="discovery_searching">Searching for devices</string>
     <string name="discovery_searching_hint">Look for peers on the same Wi-Fi network</string>
@@ -213,9 +233,22 @@
     <string name="help_empty">Help articles arrive with the screens they explain</string>
     <string name="help_open_doctor">Open Connection Doctor</string>
 
-    <!-- ===== Onboarding (§6.1) ===== -->
+    <!-- ===== Onboarding (§6.1) — four slides, replayable ===== -->
+    <string name="onboarding_1_title">Send files without the internet</string>
+    <string name="onboarding_1_body">Direct phone-to-phone transfer over Wi-Fi or Bluetooth. No cloud. No accounts. No ads.</string>
+    <string name="onboarding_2_title">Permissions we need</string>
+    <string name="onboarding_2_body">Nearby devices to find peers. Storage to read and save files. Battery exemption to keep transfers alive when the screen is off.</string>
+    <string name="onboarding_3_title">Or use a browser</string>
+    <string name="onboarding_3_body">Start WebShare and any laptop on the same network can browse, download, and upload from your phone.</string>
+    <string name="onboarding_4_title">You\'re all set</string>
+    <string name="onboarding_4_body">Tap Send to choose files or Receive to listen. Everything stays on your local network.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_grant">Grant permissions</string>
+    <string name="onboarding_not_now">Not now</string>
+    <string name="onboarding_replay">Replay tour</string>
     <string name="onboarding_open_app">Open Morsecode</string>
     <string name="onboarding_skip">Skip</string>
+    <string name="cd_onboarding_progress">Slide %1$d of %2$d</string>
 
     <!-- ===== Notification channels (§6.18) ===== -->
     <string name="channel_transfers">Transfers</string>

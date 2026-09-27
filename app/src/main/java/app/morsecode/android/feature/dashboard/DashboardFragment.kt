@@ -4,16 +4,24 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import app.morsecode.android.R
 import app.morsecode.android.core.ui.BottomNavView
 import app.morsecode.android.core.ui.Buttons
 import app.morsecode.android.core.ui.Purpose
 import app.morsecode.android.core.ui.RadarView
 import app.morsecode.android.core.ui.Screen
+import app.morsecode.android.core.network.TransportKind
+import app.morsecode.android.core.ui.PeerCardView
 import app.morsecode.android.core.ui.SectionHeaderView
+import app.morsecode.android.core.ui.TransportBadge
 import app.morsecode.android.core.ui.Shapes
 import app.morsecode.android.core.ui.Ui
 import app.morsecode.android.core.util.ThemeColors
+import app.morsecode.android.di.AppServices
+import kotlinx.coroutines.launch
 import app.morsecode.android.feature.help.HelpFragment
 import app.morsecode.android.feature.transfer.TransferFragment
 import app.morsecode.android.feature.webshare.WebShareFragment
@@ -35,6 +43,9 @@ class DashboardFragment : Screen() {
 
     override val navTab: BottomNavView.Tab = BottomNavView.Tab.CONNECT
 
+    private lateinit var caption: AppCompatTextView
+    private lateinit var recentList: LinearLayout
+
     override fun onBuildScreen(column: LinearLayout) {
         val context = requireContext()
 
@@ -48,7 +59,7 @@ class DashboardFragment : Screen() {
         radarParams.topMargin = Shapes.dpInt(context, 8f)
         column.addView(radar, radarParams)
 
-        val caption = AppCompatTextView(context)
+        caption = AppCompatTextView(context)
         caption.setTextAppearance(context, R.style.TextAppearance_Morsecode_ItemMeta)
         caption.text = getString(R.string.dashboard_scanning)
         caption.gravity = Gravity.CENTER
@@ -82,19 +93,80 @@ class DashboardFragment : Screen() {
 
         val header = SectionHeaderView(context)
         header.bind(getString(R.string.dashboard_recent_devices), getString(R.string.action_clear)) {
-            Ui.snackbar(requireActivity(), getString(R.string.stub_screen))
+            AppServices.recentDevices.clear()
+            renderRecent()
         }
         column.addView(header, wide(Shapes.dpInt(context, 8f)))
 
-        // §6.19: the list is empty until history exists (Stage 12), and says so.
-        column.addView(
-            emptyState(
-                R.drawable.ic_radar,
-                getString(R.string.dashboard_recent_empty),
-                getString(R.string.dashboard_recent_empty_action),
-            ) { openDiscovery(false) },
-            wide(0),
-        )
+        recentList = LinearLayout(context)
+        recentList.orientation = LinearLayout.VERTICAL
+        column.addView(recentList, wide(0))
+        renderRecent()
+
+        observeDiscovery()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // §11.1: every mechanism runs while a connect surface is on screen.
+        AppServices.connections.addListener()
+        renderRecent()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppServices.connections.removeListener()
+    }
+
+    private fun observeDiscovery() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppServices.discovery.peers.collect { peers ->
+                    caption.text = when (peers.size) {
+                        0 -> getString(R.string.dashboard_scanning)
+                        1 -> getString(R.string.discovery_one_device_found)
+                        else -> getString(R.string.discovery_devices_found, peers.size)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * §6.2 RECENT DEVICES. Tapping one re-runs discovery for it and, on
+     * success, opens the consent handshake — recency shortens discovery, never
+     * consent (§17.4), which is why this only opens Discovery.
+     */
+    private fun renderRecent() {
+        val context = context ?: return
+        recentList.removeAllViews()
+        val recent = AppServices.recentDevices.all()
+        if (recent.isEmpty()) {
+            recentList.addView(
+                emptyState(
+                    R.drawable.ic_radar,
+                    getString(R.string.dashboard_recent_empty),
+                    getString(R.string.dashboard_recent_empty_action),
+                ) { openDiscovery(false) },
+            )
+            return
+        }
+        for (entry in recent) {
+            val card = PeerCardView(context)
+            card.bind(
+                deviceId = entry.deviceId,
+                name = entry.name,
+                subtitle = entry.summary ?: entry.transport.name,
+                badge = when (entry.transport) {
+                    TransportKind.NEARBY -> TransportBadge.NEARBY
+                    TransportKind.WEB -> TransportBadge.WEB
+                    else -> TransportBadge.LAN
+                },
+            )
+            card.isClickable = true
+            card.setOnClickListener { openDiscovery(false) }
+            recentList.addView(card)
+        }
     }
 
     /** All three routes land on Discovery; broadcast opens it in multi-select. */

@@ -24,8 +24,12 @@ class MorsecodeApp : Application() {
         // setting, or Dark when the system has no preference.
         Themes.applyNightMode(AppServices.prefs)
 
-        // §6.18 channels exist from process start; nothing posts to them yet.
+        // §6.18 channels exist from process start.
         Notifications.createChannels(this)
+
+        // §17.2: the consent gates are wired before any transport can listen,
+        // so there is no window in which a peer could be accepted silently.
+        AppServices.connections.install()
 
         AppServices.logStore.i("${Ids.logHeader(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)} started")
     }

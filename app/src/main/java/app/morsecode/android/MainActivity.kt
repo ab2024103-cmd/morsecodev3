@@ -8,7 +8,12 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.IntentCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import app.morsecode.android.core.network.ConsentRequests
 import app.morsecode.android.core.ui.BottomNavView
+import app.morsecode.android.core.ui.ConsentDialog
 import app.morsecode.android.core.ui.Nav
 import app.morsecode.android.core.ui.Navigator
 import app.morsecode.android.core.ui.Screen
@@ -19,7 +24,9 @@ import app.morsecode.android.feature.dashboard.DashboardFragment
 import app.morsecode.android.feature.dashboard.DiscoveryFragment
 import app.morsecode.android.feature.filemanager.FilesFragment
 import app.morsecode.android.feature.history.HistoryFragment
+import app.morsecode.android.feature.onboarding.OnboardingFragment
 import app.morsecode.android.feature.settings.SettingsFragment
+import kotlinx.coroutines.launch
 
 /**
  * The single activity (§8.1): fragment destinations, one back stack, and the
@@ -52,7 +59,11 @@ class MainActivity : AppCompatActivity(), Navigator {
         if (savedInstanceState == null) {
             showRoot(BottomNavView.Tab.CONNECT)
             handleShare(intent)
+            // §6.1: the tour shows once and is replayable from Settings.
+            if (!AppServices.prefs.onboardingSeen) push(OnboardingFragment())
         }
+
+        observeConsent()
 
         supportFragmentManager.addOnBackStackChangedListener { syncShell() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -102,6 +113,66 @@ class MainActivity : AppCompatActivity(), Navigator {
         AppServices.logStore.i("Received ${files.size} shared item(s) from another app")
         push(DiscoveryFragment.newInstance(multiSelect = false))
     }
+
+    override fun onStart() {
+        super.onStart()
+        // While a screen is up the dialog is the right surface; when it is not,
+        // §6.16's heads-up notification is (see ConsentNotifications).
+        AppServices.consentRequests.uiVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppServices.consentRequests.uiVisible = false
+    }
+
+    /**
+     * §6.16 / §17.2: the consent gate's UI half. The transport is suspended
+     * inside `ConsentRequests.ask` while this is on screen, so nothing — no
+     * listing, no thumbnail, no byte — can cross before Accept.
+     */
+    private fun observeConsent() {
+        AppServices.consentRequests.onBackgroundRequest = { request ->
+            ConsentNotifications.raise(this, request)
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppServices.consentRequests.current.collect { request ->
+                    if (request == null) {
+                        ConsentNotifications.clear(this@MainActivity)
+                        return@collect
+                    }
+                    if (consentShownFor == request.id) return@collect
+                    consentShownFor = request.id
+                    ConsentNotifications.clear(this@MainActivity)
+                    showConsent(request)
+                }
+            }
+        }
+    }
+
+    private fun showConsent(request: ConsentRequests.Request) {
+        val decide: (Boolean) -> Unit = { accepted ->
+            AppServices.consentRequests.answer(request.id, accepted)
+        }
+        val dialog = when (request.kind) {
+            ConsentRequests.Kind.PEER -> ConsentDialog.forPeer(
+                context = this,
+                deviceId = request.peerId,
+                peerName = request.title,
+                monoLine = request.detail,
+                onDecision = decide,
+            )
+            ConsentRequests.Kind.BROWSER -> ConsentDialog.forBrowser(
+                context = this,
+                monoLine = request.detail,
+                onDecision = decide,
+            )
+        }
+        dialog.show()
+    }
+
+    private var consentShownFor: String? = null
 
     // ----- Navigator (§5.2) -------------------------------------------------
 
