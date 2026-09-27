@@ -73,8 +73,9 @@ class IntegrityTest {
         assertEquals(0, Integrity.resumeSequence(chunk - 1L, chunk))
         assertEquals(1, Integrity.resumeSequence(chunk.toLong(), chunk))
         assertEquals(4, Integrity.resumeSequence(4L * chunk + 10, chunk))
-        // A 144 MB video resuming at 48.9 MB: 195 whole chunks are already in
-        // the .part file, so the next frame is seq 195.
-        assertEquals(195, Integrity.resumeSequence(48_900_000L, chunk))
+        // A 144 MB video resuming at 48.9 MB: with 256 KB chunks that is
+        // 48_900_000 / 262_144 = 186 whole chunks already in the .part file,
+        // so the next frame is seq 186.
+        assertEquals(186, Integrity.resumeSequence(48_900_000L, chunk))
     }
 }

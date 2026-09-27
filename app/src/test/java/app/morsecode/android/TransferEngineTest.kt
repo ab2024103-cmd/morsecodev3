@@ -10,7 +10,6 @@ import app.morsecode.android.core.transfer.TransferEngine
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,6 +67,19 @@ class TransferEngineTest {
         clock = { testScheduler.currentTime },
     )
 
+    /**
+     * Runs the engine's coroutines forward.
+     *
+     * `advanceUntilIdle()` is deliberately not used: the engine lives in
+     * `backgroundScope`, and advancing virtual time is what actually drives
+     * background work — the first CI run of this suite proved the difference,
+     * leaving items QUEUED while `advanceTimeBy` moved them.
+     */
+    private fun TestScope.settle(millis: Long = 5_000) {
+        testScheduler.advanceTimeBy(millis)
+        testScheduler.runCurrent()
+    }
+
     private fun TestScope.collectEvents(engine: TransferEngine): List<EngineEvent> {
         val events = ArrayList<EngineEvent>()
         backgroundScope.launch { engine.events.collect { events.add(it) } }
@@ -86,7 +98,7 @@ class TransferEngineTest {
         val batch = engine.enqueue(
             listOf(FakeSession.file("a.jpg"), FakeSession.file("b.jpg"), FakeSession.file("c.jpg")),
         )
-        advanceUntilIdle()
+        settle()
 
         assertTrue(engine.items.value.all { it.state == TransferState.COMPLETED })
         val summaries = events.filterIsInstance<EngineEvent.BatchCompleted>()
@@ -112,7 +124,7 @@ class TransferEngineTest {
                 FakeSession.file("broken.jpg"),
             ),
         )
-        advanceUntilIdle()
+        settle()
 
         val byName = engine.items.value.associateBy { it.file.displayName }
         assertEquals(TransferState.COMPLETED, byName.getValue("ok.jpg").state)
@@ -140,12 +152,12 @@ class TransferEngineTest {
             listOf(FakeSession.file("stuck.bin"), FakeSession.file("next.jpg"), FakeSession.file("last.jpg")),
         )
         // Let the worker pick up the hanging file.
-        testScheduler.advanceTimeBy(20)
+        settle(20)
         val stuck = engine.items.value.first { it.file.displayName == "stuck.bin" }
         assertEquals(TransferState.IN_PROGRESS, stuck.state)
 
         engine.cancel(stuck.id)
-        advanceUntilIdle()
+        settle()
 
         val byName = engine.items.value.associateBy { it.file.displayName }
         assertEquals(TransferState.CANCELLED, byName.getValue("stuck.bin").state)
@@ -166,13 +178,13 @@ class TransferEngineTest {
         engine.onSessionConnected(session)
 
         engine.enqueue(listOf(FakeSession.file("big.mp4", size = 4096), FakeSession.file("small.jpg")))
-        testScheduler.advanceTimeBy(20)
+        settle(20)
         val big = engine.items.value.first { it.file.displayName == "big.mp4" }
         // Some bytes moved before the pause.
         engine.queue.setProgress(big.id, 1024, 500_000)
 
         engine.pause(big.id)
-        advanceUntilIdle()
+        settle()
 
         val paused = engine.queue.item(big.id)!!
         assertEquals(TransferState.PAUSED, paused.state)
@@ -195,7 +207,7 @@ class TransferEngineTest {
         engine.onSessionConnected(session)
 
         engine.enqueue(listOf(FakeSession.file("ghost.bin"), FakeSession.file("after.jpg")))
-        advanceUntilIdle()
+        settle()
 
         // No pause, no cancel, no session loss: the bounded await still ends,
         // the item fails after its retries, and the queue keeps moving.
@@ -216,7 +228,7 @@ class TransferEngineTest {
         engine.onSessionConnected(session)
 
         engine.enqueue(listOf(FakeSession.file("flaky.jpg")))
-        advanceUntilIdle()
+        settle()
 
         val item = engine.items.value.single()
         assertEquals(TransferState.COMPLETED, item.state)
@@ -233,7 +245,7 @@ class TransferEngineTest {
         engine.onSessionConnected(session)
 
         engine.enqueue(listOf(FakeSession.file("dead.bin")))
-        advanceUntilIdle()
+        settle()
 
         assertEquals(TransferState.FAILED, engine.items.value.single().state)
         // The first attempt plus three retries (§9.3).
@@ -250,13 +262,13 @@ class TransferEngineTest {
         session.behave("big.mp4", FakeSession.Behaviour.HANG)
         engine.onSessionConnected(session)
         engine.enqueue(listOf(FakeSession.file("big.mp4", 4096), FakeSession.file("queued.jpg")))
-        testScheduler.advanceTimeBy(20)
+        settle(20)
 
         val big = engine.items.value.first { it.file.displayName == "big.mp4" }
         engine.queue.setProgress(big.id, 2048, 500_000)
         session.isAlive = false
         engine.onSessionLost("Connection lost")
-        advanceUntilIdle()
+        settle()
 
         assertTrue(engine.items.value.all { it.state == TransferState.PAUSED })
         assertTrue(engine.items.value.none { it.state == TransferState.FAILED })
@@ -271,15 +283,15 @@ class TransferEngineTest {
         first.behave("big.mp4", FakeSession.Behaviour.HANG)
         engine.onSessionConnected(first)
         engine.enqueue(listOf(FakeSession.file("big.mp4", 4096), FakeSession.file("queued.jpg")))
-        testScheduler.advanceTimeBy(20)
+        settle(20)
 
         first.isAlive = false
         engine.onSessionLost("Connection lost")
-        advanceUntilIdle()
+        settle()
 
         // A3: start a new session immediately — everything resumes by itself.
         engine.onSessionConnected(FakeSession(peerId = "peer-2", peerName = "Pixel 7X"))
-        advanceUntilIdle()
+        settle()
 
         assertTrue(engine.items.value.all { it.state == TransferState.COMPLETED })
         assertTrue(engine.session.value is SessionState.Connected)
@@ -292,23 +304,23 @@ class TransferEngineTest {
         session.behave("held.mp4", FakeSession.Behaviour.HANG)
         engine.onSessionConnected(session)
         engine.enqueue(listOf(FakeSession.file("held.mp4"), FakeSession.file("other.jpg")))
-        testScheduler.advanceTimeBy(20)
+        settle(20)
 
         val held = engine.items.value.first { it.file.displayName == "held.mp4" }
         engine.pause(held.id)
-        advanceUntilIdle()
+        settle()
 
         session.isAlive = false
         engine.onSessionLost("Connection lost")
         engine.onSessionConnected(FakeSession(peerId = "peer-3"))
-        advanceUntilIdle()
+        settle()
 
         // INV-3 re-queues what the CONNECTION paused, not what the USER did.
         assertEquals(TransferState.PAUSED, engine.queue.item(held.id)!!.state)
 
         engine.resume(held.id)
         session.released.complete(Unit)
-        advanceUntilIdle()
+        settle()
         assertEquals(TransferState.COMPLETED, engine.queue.item(held.id)!!.state)
     }
 
@@ -326,7 +338,7 @@ class TransferEngineTest {
         engine.enqueue(
             listOf(FakeSession.file("ok.jpg"), FakeSession.file("dupe.jpg"), FakeSession.file("dead.bin")),
         )
-        advanceUntilIdle()
+        settle()
 
         val rows = history.read().associateBy { it.name }
         assertEquals(3, rows.size)
@@ -345,7 +357,7 @@ class TransferEngineTest {
         session.behave("big.mp4", FakeSession.Behaviour.HANG)
         engine.onSessionConnected(session)
         engine.enqueue(listOf(FakeSession.file("big.mp4", 4096), FakeSession.file("queued.jpg")))
-        testScheduler.advanceTimeBy(20)
+        settle(20)
 
         assertTrue("the journal is written on every transition", journalFile.exists())
 
@@ -383,7 +395,7 @@ class TransferEngineTest {
 
         engine.onSessionConnected(FakeSession())
         engine.enqueue(held)
-        advanceUntilIdle()
+        settle()
         assertEquals(TransferState.COMPLETED, engine.items.value.single().state)
     }
 
