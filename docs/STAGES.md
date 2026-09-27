@@ -258,3 +258,77 @@ Self-review before I look at it:
 3. The §22 criteria you claimed, re-run, with output.
 Report deviations — do not silently amend the spec.
 ```
+
+---
+
+# Recovery stages 18–20 (after the first 1–17 pass)
+
+Trigger: the build compiles and CI is green, but the UI is "similar not the same",
+the release APK came in at 1.7 MB against a 5–9 MB budget, and the §22 audit was
+2 PASS / 33 BLOCKED because the app had never actually been run.
+Do these in order — 18 first, because nothing else can be judged until the app runs.
+
+### Stage 18 — make it run, and make CI prove it
+
+```text
+Stage 18 of the plan: turn "compiles" into "runs". Pull docs/prompmaster.txt
+first — §21.3 is new and binding.
+
+The §22 audit came back 2 PASS / 33 BLOCKED. Most of those are not blocked by
+hardware, they are blocked by CI never having launched the app. Implement
+§21.3: an Android emulator in CI on API 23 and a current API level, running
+the instrumented suite, walking every §6 and §7 screen once per theme,
+publishing a PNG per screen as build artifacts, and exercising everything that
+does not need a second radio — including a loopback transfer between two
+emulator instances and WebShare answering in the emulator's own browser.
+
+Then re-run §22 honestly. Only Nearby/Bluetooth radio cases, true multi-phone
+timing (A1, A3, A9), MYA-L10 behaviour (A10) and TalkBack (A17) may remain
+BLOCKED. Report the new tally and, for every criterion that flips to FAIL, the
+stack trace or screenshot that proves it. Do not fix anything in this stage
+except what is needed to make the harness run: I want the real failure list.
+```
+
+### Stage 19 — dependencies and size: undo the over-squeeze
+
+```text
+Stage 19 of the plan: §3.3 has been rewritten — the old clause banned Material
+Components and Media3, which contradicted §4.12, §4.13 and §6.11 and is why
+the UI is hand-rolled and the APK is 1.7 MB. That was my error, not yours.
+
+Adopt the new allowlist: Material Components 1.11+ as the widget layer (bottom
+sheets, switches, tab rows, chips, snackbars, FABs — restyled with §4 tokens,
+not reimplemented), androidx.media3/ExoPlayer for BOTH players, and optionally
+Glide or Coil for thumbnails. Replace the hand-built equivalents rather than
+layering on top of them; delete the dead ones.
+
+Confirm the launcher icon ships at every density (§19.2) and that all WebShare
+assets are packaged. Then report the new release APK size against §19.4's
+5–9 MB range with a component breakdown, and flag anything still suspiciously
+small.
+```
+
+### Stage 20 — fidelity pass and the carried-over gaps
+
+```text
+Stage 20 of the plan: §4.15 is new — "similar" is a defect.
+
+Run the fidelity pass for every screen in §6 and §7: emulator screenshot from
+§21.3 beside the matching screen of docs/ui-simulator.html (and the mock sheet
+for that screen if I have attached the deck), same width, diffed in §4.15's
+order — vertical rhythm, component geometry, typography, spacing, colour
+roles, icon weight, copy. Tolerances: spacing within 2 dp, radii/strokes/type
+scale/colours exact. Every delta is FIXED or recorded with a reason in
+docs/TRACEABILITY.md; "close enough" with no entry is a defect.
+
+Then close the gaps you recorded yourself at the end of Stage 17:
+  - §14.1 keep-warning after a background-shaped death
+  - the WebShare SSE endpoint that is really a 2-second poll
+  - /push-download marking delivery on whole-file requests only
+  - §10.2's round-robin send window
+  - §6.8.3's receiver subtitle and [FROM] badge
+  - the Now-Playing queue sheet, profile rename, in-app Trash, Files
+    long-press toolbar
+  - ThumbnailStore eviction
+Each one lands with the test that proves it, and the §22 line it touches.
+```
