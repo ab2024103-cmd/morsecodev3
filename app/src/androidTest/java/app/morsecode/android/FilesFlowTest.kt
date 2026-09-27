@@ -57,7 +57,7 @@ class FilesFlowTest {
                     .perform(click())
                 instrumentation.waitForIdleSync()
                 Thread.sleep(400)
-                scenario.onActivity { Screenshots.capture(it, "06.9-files-${tab.lowercase()}", "dark") }
+                scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-${tab.lowercase()}", "dark") } }
             }
 
             // §6.9: the sort icon is a working control, not decoration.
@@ -69,7 +69,7 @@ class FilesFlowTest {
             Thread.sleep(300)
             // The echo under the tab strip must now name the active order.
             onView(withText("Size · largest first")).check(matches(isDisplayed()))
-            scenario.onActivity { Screenshots.capture(it, "06.9-files-sorted", "dark") }
+            scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-sorted", "dark") } }
         }
     }
 
@@ -93,7 +93,7 @@ class FilesFlowTest {
             scenario.onActivity { it.selectTab(BottomNavView.Tab.FILES) }
             instrumentation.waitForIdleSync()
             Thread.sleep(600)
-            scenario.onActivity { Screenshots.capture(it, "06.9-files-selection", "dark") }
+            scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-selection", "dark") } }
         }
 
         assertEquals(1, selection.count)

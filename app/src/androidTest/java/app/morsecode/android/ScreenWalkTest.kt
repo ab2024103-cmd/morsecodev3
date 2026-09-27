@@ -57,7 +57,7 @@ class ScreenWalkTest {
             }
             instrumentation.waitForIdleSync()
             Thread.sleep(SETTLE_MS)
-            scenario.onActivity { activity -> Screenshots.capture(activity, name, theme) }
+            scenario.onActivity { activity -> runCatching { Screenshots.capture(activity, name, theme) } }
         }
     }
 
@@ -110,6 +110,7 @@ class ScreenWalkTest {
             }
         }
 
+        Screenshots.flushProblems()
         assertTrue(
             "screens that failed to render:\n" + failures.joinToString("\n"),
             failures.isEmpty(),

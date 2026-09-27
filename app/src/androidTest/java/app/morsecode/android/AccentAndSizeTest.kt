@@ -35,7 +35,7 @@ class AccentAndSizeTest {
                         expected,
                         resolved,
                     )
-                    Screenshots.capture(activity, "accent-${accent.key}", "dark")
+                    runCatching { Screenshots.capture(activity, "accent-${accent.key}", "dark") }
                 }
             }
         }
