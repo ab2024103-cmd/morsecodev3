@@ -258,14 +258,64 @@
     <string name="logs_errors_only">Errors only</string>
     <string name="logs_clear">Clear</string>
     <string name="logs_empty">No log entries yet</string>
+    <string name="logs_search_hint">Search the log</string>
 
     <!-- ===== Connection Doctor (§6.15) ===== -->
     <string name="doctor_request_battery">✓ Request battery exemption</string>
     <string name="doctor_refresh">⟳ Refresh checks</string>
     <string name="doctor_empty">Checks run when you open this screen</string>
 
+    <!-- ===== History (§6.12) ===== -->
+    <string name="history_open">Open</string>
+    <string name="history_send_again">Send again</string>
+    <string name="history_remove">Remove from history</string>
+    <string name="history_delete_file">Delete file</string>
+    <string name="history_unavailable">File no longer available</string>
+    <string name="history_search_hint">Search files and phones</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_completed">Completed</string>
+    <string name="history_filter_failed">Failed</string>
+    <string name="history_filter_skipped">Skipped</string>
+
+    <!-- ===== Settings, the wired switches (§6.13) ===== -->
+    <string name="settings_conflict_ask">Ask every time</string>
+    <string name="settings_conflict_rename">Rename duplicates</string>
+    <string name="settings_conflict_overwrite">Overwrite</string>
+    <string name="settings_conflict_skip">Skip</string>
+    <string name="settings_broadcast_peers_value">Maximum %1$d phones</string>
+    <string name="settings_storage_none">No folders added yet</string>
+    <string name="settings_storage_remove">Remove</string>
+    <string name="settings_battery_on">Exemption granted</string>
+    <string name="settings_all_files">All-files access</string>
+    <string name="settings_all_files_sub">Optional · needed only to browse folders other apps own</string>
+    <string name="settings_all_files_rationale">Android normally hides other apps\' folders. Turning this on lets Morsecode list every folder on the phone. It is never required to send or receive — you can grant single folders instead.</string>
+    <string name="settings_continue">Continue</string>
+
+    <!-- ===== Connection Doctor (§6.15) ===== -->
+    <string name="doctor_running">Running checks…</string>
+
     <!-- ===== Help (§6.17) ===== -->
     <string name="help_empty">Help articles arrive with the screens they explain</string>
+    <string name="help_q1">How does Morsecode work?</string>
+    <string name="help_a1">Two phones on the same Wi-Fi connect directly. If there\'s no shared network, Nearby Connections uses Bluetooth or Wi-Fi Direct.</string>
+    <string name="help_q2">Do I need internet?</string>
+    <string name="help_a2">No. Everything happens on your local network, and nothing is uploaded anywhere.</string>
+    <string name="help_q3">Can I send and receive at the same time?</string>
+    <string name="help_a3">Yes. A session carries both directions at once, and the transfer screen shows a Sending and a Receiving section.</string>
+    <string name="help_q4">What is WebShare?</string>
+    <string name="help_a4">A small web server on your phone. Any browser on the same network can browse, download and upload once you accept it.</string>
+    <string name="help_q5">Where are my logs?</string>
+    <string name="help_a5">Settings → Logs. Export .txt hands the whole log to any app you choose.</string>
+    <string name="help_article_not_found">Phone not found during discovery</string>
+    <string name="help_article_stalls">Transfer stalls partway through</string>
+    <string name="help_article_browser">Browser can\'t connect to WebShare</string>
+    <string name="help_article_apk">Received APK won\'t install</string>
+    <string name="help_article_hotspot">Hotspot won\'t turn on</string>
+    <string name="help_article_slow">Transfer is very slow</string>
+    <string name="help_article_missing">Files received but I can\'t find them</string>
+    <string name="help_article_broadcast">What does Broadcast do?</string>
+    <string name="help_open_storage">Open storage access</string>
+    <string name="help_open_battery">Open battery settings</string>
     <string name="help_open_doctor">Open Connection Doctor</string>
 
     <!-- ===== Onboarding (§6.1) — four slides, replayable ===== -->

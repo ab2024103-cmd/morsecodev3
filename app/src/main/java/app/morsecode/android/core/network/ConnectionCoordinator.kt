@@ -33,6 +33,9 @@ class ConnectionCoordinator(
 ) {
 
     private val appContext = context.applicationContext
+
+    /** §6.13 Sounds: connect · fail · success. */
+    var soundFx: app.morsecode.android.core.transfer.SoundFx? = null
     private var listeners = 0
     private var nearbyAvailable = false
 
@@ -132,6 +135,9 @@ class ConnectionCoordinator(
 
     /** Binds a live session to the engine and starts the §3.7 service. */
     private fun bind(session: TransportSession) {
+        // §6.13's Sounds switch is read by SoundFx itself, so this line is a
+        // no-op when the user has turned it off.
+        soundFx?.play(app.morsecode.android.core.transfer.SoundFx.Cue.CONNECT)
         sessions.add(session)
         engine.onSessionConnected(session)
         TransferService.start(appContext)

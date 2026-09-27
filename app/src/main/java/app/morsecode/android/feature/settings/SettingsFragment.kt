@@ -17,6 +17,7 @@ import app.morsecode.android.core.ui.Shapes
 import app.morsecode.android.core.ui.Themes
 import app.morsecode.android.core.ui.Ui
 import app.morsecode.android.core.util.Accent
+import app.morsecode.android.core.util.Permissions
 import app.morsecode.android.core.util.ThemeColors
 import app.morsecode.android.di.AppServices
 import app.morsecode.android.feature.help.HelpFragment
@@ -40,6 +41,23 @@ class SettingsFragment : Screen() {
     override val navTab: BottomNavView.Tab = BottomNavView.Tab.SETTINGS
 
     private lateinit var darkModeRow: SettingRowView
+    private lateinit var conflictRow: SettingRowView
+    private lateinit var peersRow: SettingRowView
+    private lateinit var storageRow: SettingRowView
+    private lateinit var batteryRow: SettingRowView
+
+    /** §12.1: a granted tree is persisted the moment it is picked. */
+    private val treePicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            AppServices.safStore.persist(uri)
+            storageRow.bindAction(
+                getString(R.string.settings_storage_access),
+                storageSubtitle(),
+            ) { showStorageAccess() }
+        }
+    }
 
     override fun onBuildScreen(column: LinearLayout) {
         val context = requireContext()
@@ -84,21 +102,69 @@ class SettingsFragment : Screen() {
         }
         column.addView(followSystem, params(0))
 
+        // §6.13 Sounds — read by SoundFx on every cue (§6.13's own warning).
+        val sounds = SettingRowView(context)
+        sounds.bindToggle(
+            label = getString(R.string.settings_sounds),
+            subtitle = getString(R.string.settings_sounds_sub),
+            checked = prefs.sounds.value,
+        ) { enabled -> prefs.setSounds(enabled) }
+        column.addView(sounds, params(0))
+
         column.addView(header(getString(R.string.settings_section_transfer)), params(8))
-        column.addView(laterRow(R.string.settings_conflict_policy, R.string.settings_conflict_policy_sub), params(0))
-        column.addView(laterRow(R.string.settings_notifications, R.string.settings_notifications_sub), params(0))
-        column.addView(laterRow(R.string.settings_broadcast_peers, R.string.settings_broadcast_peers_sub), params(0))
+
+        conflictRow = SettingRowView(context)
+        conflictRow.bindAction(
+            getString(R.string.settings_conflict_policy),
+            conflictLabel(prefs.conflictPolicy.value),
+        ) { chooseConflictPolicy() }
+        column.addView(conflictRow, params(0))
+
+        val notifications = SettingRowView(context)
+        notifications.bindToggle(
+            label = getString(R.string.settings_notifications),
+            subtitle = getString(R.string.settings_notifications_sub),
+            checked = prefs.notifications.value,
+        ) { enabled -> prefs.setNotifications(enabled) }
+        column.addView(notifications, params(0))
+
+        peersRow = SettingRowView(context)
+        peersRow.bindAction(
+            getString(R.string.settings_broadcast_peers),
+            getString(R.string.settings_broadcast_peers_value, prefs.broadcastPeers.value),
+        ) { chooseBroadcastPeers() }
+        column.addView(peersRow, params(0))
 
         column.addView(header(getString(R.string.settings_section_system)), params(8))
-        column.addView(laterRow(R.string.settings_storage_access, R.string.settings_storage_access_sub), params(0))
-        column.addView(laterRow(R.string.settings_battery, R.string.settings_battery_sub), params(0))
+
+        storageRow = SettingRowView(context)
+        storageRow.bindAction(
+            getString(R.string.settings_storage_access),
+            storageSubtitle(),
+        ) { showStorageAccess() }
+        column.addView(storageRow, params(0))
+
+        batteryRow = SettingRowView(context)
+        batteryRow.bindAction(getString(R.string.settings_battery), batterySubtitle()) {
+            requestBatteryExemption()
+        }
+        column.addView(batteryRow, params(0))
 
         val logs = SettingRowView(context)
         logs.bindAction(getString(R.string.settings_logs), getString(R.string.settings_logs_sub)) {
             nav().push(LogViewerFragment())
         }
         column.addView(logs, params(0))
-        column.addView(laterRow(R.string.settings_crash_reports, R.string.settings_crash_reports_sub), params(0))
+
+        // §16.6 / §6.13: local crash capture, never uploaded — and the switch
+        // is what LogStore reads before writing a report.
+        val crashReports = SettingRowView(context)
+        crashReports.bindToggle(
+            label = getString(R.string.settings_crash_reports),
+            subtitle = getString(R.string.settings_crash_reports_sub),
+            checked = prefs.crashReports.value,
+        ) { enabled -> prefs.setCrashReports(enabled) }
+        column.addView(crashReports, params(0))
 
         column.addView(header(getString(R.string.settings_section_diagnostics)), params(8))
         val doctor = SettingRowView(context)
@@ -216,13 +282,128 @@ class SettingsFragment : Screen() {
         return view
     }
 
-    /** A real row for a setting whose behaviour lands in a later stage (§20.6). */
-    private fun laterRow(labelRes: Int, subtitleRes: Int): SettingRowView {
-        val row = SettingRowView(requireContext())
-        row.bindAction(getString(labelRes), getString(subtitleRes)) {
-            Ui.snackbar(requireActivity(), getString(R.string.stub_screen))
+    // ----- The wired settings (§6.13) --------------------------------------
+
+    private fun conflictLabel(policy: Prefs.ConflictPolicy): String = getString(
+        when (policy) {
+            Prefs.ConflictPolicy.ASK -> R.string.settings_conflict_ask
+            Prefs.ConflictPolicy.RENAME -> R.string.settings_conflict_rename
+            Prefs.ConflictPolicy.OVERWRITE -> R.string.settings_conflict_overwrite
+            Prefs.ConflictPolicy.SKIP -> R.string.settings_conflict_skip
+        },
+    )
+
+    /** §9.5's four policies; the receiver reads this on the next META. */
+    private fun chooseConflictPolicy() {
+        val policies = Prefs.ConflictPolicy.values()
+        val labels = policies.map { conflictLabel(it) }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_conflict_policy)
+            .setItems(labels) { _, which ->
+                AppServices.prefs.setConflictPolicy(policies[which])
+                AppServices.applyConflictPolicy()
+                conflictRow.bindAction(
+                    getString(R.string.settings_conflict_policy),
+                    conflictLabel(policies[which]),
+                ) { chooseConflictPolicy() }
+            }
+            .show()
+    }
+
+    /** §10.2 / G7: default 4, range 2–8. The discovery cap reads it. */
+    private fun chooseBroadcastPeers() {
+        val options = (Prefs.MIN_PEERS..Prefs.MAX_PEERS).toList()
+        val labels = options.map { getString(R.string.settings_broadcast_peers_value, it) }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_broadcast_peers)
+            .setItems(labels) { _, which ->
+                AppServices.prefs.setBroadcastPeers(options[which])
+                peersRow.bindAction(
+                    getString(R.string.settings_broadcast_peers),
+                    getString(R.string.settings_broadcast_peers_value, options[which]),
+                ) { chooseBroadcastPeers() }
+            }
+            .show()
+    }
+
+    private fun storageSubtitle(): String {
+        val trees = AppServices.safStore.grantedTrees()
+        return if (trees.isEmpty()) {
+            getString(R.string.settings_storage_access_sub)
+        } else {
+            trees.joinToString(" · ") { AppServices.safStore.displayName(it) }
         }
-        return row
+    }
+
+    /**
+     * §6.13 Storage access: the granted trees with a per-entry Remove, "+ Add a
+     * folder", and §12.3's optional all-files upgrade behind a plain-language
+     * rationale — never at first run, never bundled into the permission flow.
+     */
+    private fun showStorageAccess() {
+        val context = requireContext()
+        val trees = AppServices.safStore.grantedTrees()
+        val labels = ArrayList<String>()
+        for (tree in trees) {
+            labels.add("${AppServices.safStore.displayName(tree)} — ${getString(R.string.settings_storage_remove)}")
+        }
+        labels.add(getString(R.string.files_add_folder))
+        labels.add(getString(R.string.settings_all_files))
+
+        androidx.appcompat.app.AlertDialog.Builder(context)
+            .setTitle(R.string.settings_storage_access)
+            .setItems(labels.toTypedArray()) { _, which ->
+                when {
+                    which < trees.size -> {
+                        AppServices.safStore.release(trees[which])
+                        storageRow.bindAction(
+                            getString(R.string.settings_storage_access),
+                            storageSubtitle(),
+                        ) { showStorageAccess() }
+                    }
+                    which == trees.size -> treePicker.launch(null)
+                    else -> explainAllFilesAccess()
+                }
+            }
+            .show()
+    }
+
+    /** §12.3: the rationale sheet comes BEFORE the system screen. */
+    private fun explainAllFilesAccess() {
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_all_files)
+            .setMessage(R.string.settings_all_files_rationale)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.settings_continue) { _, _ ->
+                Permissions.allFilesAccessIntent(requireContext())?.let {
+                    runCatching { startActivity(it) }
+                }
+            }
+            .show()
+    }
+
+    private fun batterySubtitle(): String = if (isBatteryExempt()) {
+        getString(R.string.settings_battery_on)
+    } else {
+        getString(R.string.settings_battery_sub)
+    }
+
+    private fun isBatteryExempt(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 23) return true
+        val manager = requireContext().getSystemService(android.content.Context.POWER_SERVICE)
+            as? android.os.PowerManager ?: return false
+        return manager.isIgnoringBatteryOptimizations(requireContext().packageName)
+    }
+
+    /** §14.1: explained, never silent, and never required. */
+    private fun requestBatteryExemption() {
+        if (isBatteryExempt()) return
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            android.net.Uri.parse("package:${requireContext().packageName}"),
+        )
+        runCatching { startActivity(intent) }
+            .onFailure { Ui.snackbar(requireActivity(), getString(R.string.stub_screen)) }
     }
 
     private fun params(topMarginDp: Int): LinearLayout.LayoutParams {

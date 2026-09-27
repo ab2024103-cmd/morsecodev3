@@ -113,9 +113,36 @@ object AppServices {
     /** §8.1: one live session per peer; §6.16 reads it to avoid re-prompting. */
     val sessionRegistry: SessionRegistry by lazy { SessionRegistry() }
 
-    /** §9.5 default policy is "Rename duplicates" (§6.13). */
+    /** §9.5 default policy, taken from §6.13's setting rather than a constant. */
     val conflictPolicy: Conflicts.BatchPolicy by lazy {
-        Conflicts.BatchPolicy(Conflicts.Policy.RENAME)
+        Conflicts.BatchPolicy(conflictPolicyFromPrefs())
+    }
+
+    /** §6.13 "Sounds · Connect · fail · success" — the reader for that switch. */
+    val soundFx: app.morsecode.android.core.transfer.SoundFx by lazy {
+        app.morsecode.android.core.transfer.SoundFx(appContext, prefs)
+    }
+
+    fun conflictPolicyFromPrefs(): Conflicts.Policy = when (prefs.conflictPolicy.value) {
+        Prefs.ConflictPolicy.ASK -> Conflicts.Policy.ASK
+        Prefs.ConflictPolicy.RENAME -> Conflicts.Policy.RENAME
+        Prefs.ConflictPolicy.OVERWRITE -> Conflicts.Policy.OVERWRITE
+        Prefs.ConflictPolicy.SKIP -> Conflicts.Policy.SKIP
+    }
+
+    /** Called when the setting changes, so the next META uses the new policy. */
+    fun applyConflictPolicy() {
+        conflictPolicy.setDefault(conflictPolicyFromPrefs())
+    }
+
+    /**
+     * §10.2 / G7 and §13: the effective broadcast cap is the user's setting,
+     * bounded by what the device and the transport can carry. This is the
+     * reader for the "Broadcast peers" row.
+     */
+    fun maxBroadcastPeers(nearby: Boolean = false): Int {
+        val tierCap = if (nearby) deviceTier.maxNearbyPeers else deviceTier.maxBroadcastPeers
+        return prefs.broadcastPeers.value.coerceAtMost(tierCap)
     }
 
     val receiveSinks: ReceiveSinkFactory by lazy {
@@ -207,11 +234,13 @@ object AppServices {
             consent = consentRequests,
             recentDevices = recentDevices,
             logStore = logStore,
-        )
+        ).also { it.soundFx = soundFx }
     }
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        // §6.13: the crash-report switch is read before any report is written.
+        logStore.crashCaptureEnabled = { prefs.crashReports.value }
     }
 
     /** True once [init] has run; guards services reached from static entry points. */

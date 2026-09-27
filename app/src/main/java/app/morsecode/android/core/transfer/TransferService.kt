@@ -53,6 +53,10 @@ class TransferService : Service() {
         if (observer?.isActive == true) return
         observer = AppServices.engineScope.launch {
             AppServices.transferEngine.items.collect {
+                // §6.13 "Notifications · Transfer progress": with the switch
+                // off the service keeps its (mandatory) foreground
+                // notification but stops publishing progress into it.
+                if (!AppServices.prefs.notifications.value) return@collect
                 val manager = getSystemService(NOTIFICATION_SERVICE) as? android.app.NotificationManager
                 manager?.notify(NOTIFICATION_ID, buildNotification())
             }

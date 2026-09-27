@@ -109,9 +109,18 @@ object Conflicts {
      * choice is per batch and never leaks into the next one — a decision made
      * about holiday photos must not silently overwrite next week's documents.
      */
-    class BatchPolicy(private val default: Policy) {
+    class BatchPolicy(default: Policy) {
 
         private val appliedToAll = HashMap<String, Policy>()
+
+        /** §6.13's setting can change mid-session; the next batch honours it. */
+        private var default: Policy = default
+
+        fun setDefault(policy: Policy) {
+            default = policy
+        }
+
+        fun defaultPolicy(): Policy = default
 
         fun policyFor(batchId: String): Policy = appliedToAll[batchId] ?: default
 

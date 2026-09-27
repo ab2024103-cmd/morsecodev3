@@ -77,7 +77,15 @@ class LogStore(context: Context) {
         i("Log cleared")
     }
 
+    /**
+     * §6.13's "Crash reports · Local · never uploaded" switch is read HERE,
+     * before anything is written. A stored-but-unread preference is a defect,
+     * so the setting owns the behaviour rather than merely describing it.
+     */
+    var crashCaptureEnabled: () -> Boolean = { true }
+
     fun recordCrash(thread: Thread, error: Throwable) {
+        if (!crashCaptureEnabled()) return
         val writer = StringWriter()
         PrintWriter(writer).use { error.printStackTrace(it) }
         val stamp = FILE_STAMP.format(Date())
