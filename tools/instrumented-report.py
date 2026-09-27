@@ -44,7 +44,8 @@ def main() -> None:
     print("## Instrumented run")
     print()
     marker = "emulator-evidence/script-marker.txt"
-    print("- harness script completed: **%s**" % ("yes" if os.path.exists(marker) else "NO"))
+    state = open(marker).read().strip() if os.path.exists(marker) else "never started"
+    print("- harness script: **%s**" % state)
     if xml_files:
         print("- tests: **%d**, failed: **%d**, skipped: %d" % (total, failed, skipped))
     else:
@@ -52,6 +53,20 @@ def main() -> None:
     print("- screenshots captured: **%d**" % len(shots))
     print("- size-sweep frames: **%d**" % len(sweep))
     print()
+
+    for name, title in (
+        ("emulator-evidence/diag.txt", "Device as the harness found it"),
+        ("emulator-evidence/gradle-tails.txt", "Gradle output (tails)"),
+    ):
+        if os.path.exists(name):
+            body = open(name, errors="replace").read().strip()
+            if body:
+                print("### %s" % title)
+                print()
+                print("```")
+                print(body[-2500:])
+                print("```")
+                print()
 
     if failures:
         print("### Failures")
