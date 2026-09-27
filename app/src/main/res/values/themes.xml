@@ -29,6 +29,9 @@
 
         <!-- Light-mode cards carry a 1 dp border AND a 2 dp/4% soft shadow (§4.3). -->
         <item name="isLightSurface">true</item>
+        <item name="colorViewerBackdrop">@color/viewer_backdrop_light</item>
+        <item name="colorViewerChrome">@color/viewer_chrome</item>
+        <item name="colorViewerChromeScrim">@color/viewer_chrome_scrim</item>
         <item name="cardElevation">@dimen/card_elevation_light</item>
 
         <!-- AppCompat plumbing mapped onto the same tokens. -->

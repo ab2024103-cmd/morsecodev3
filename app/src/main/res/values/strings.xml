@@ -64,4 +64,177 @@
 
     <!-- ===== Formatting scaffolding (§4.7 mono meta lines) ===== -->
     <string name="meta_dot_separator">%1$s · %2$s</string>
+
+    <!-- ===== Screen titles and shared chrome (§5, §6) ===== -->
+    <string name="title_connect">Connect</string>
+    <string name="title_send_files">Send files</string>
+    <string name="title_receive">Receive</string>
+    <string name="title_transfer">Transfer</string>
+    <string name="title_broadcast">Broadcast</string>
+    <string name="title_webshare">WebShare</string>
+    <string name="title_files">Files</string>
+    <string name="title_history">History</string>
+    <string name="title_settings">Settings</string>
+    <string name="title_logs">Logs</string>
+    <string name="title_connection_doctor">Connection Doctor</string>
+    <string name="title_help">Help</string>
+    <string name="title_now_playing">NOW PLAYING</string>
+    <string name="title_viewer">Viewer</string>
+    <string name="title_video_player">Video</string>
+    <string name="title_onboarding">Welcome</string>
+
+    <string name="action_clear">Clear</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_share">Share</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_open_folder">Open folder</string>
+    <string name="action_done">DONE</string>
+
+    <!-- ===== Connect · dashboard (§6.2) ===== -->
+    <string name="dashboard_send">↑ Send</string>
+    <string name="dashboard_receive">↓ Receive</string>
+    <string name="dashboard_broadcast">⇶ Broadcast to several phones</string>
+    <string name="dashboard_scanning">Scanning the local network</string>
+    <string name="dashboard_devices_nearby">%1$d devices nearby</string>
+    <string name="dashboard_webshare_title">WebShare · PC</string>
+    <string name="dashboard_webshare_off">OFF</string>
+    <string name="dashboard_webshare_on">ON</string>
+    <string name="dashboard_webshare_stopped">Not running</string>
+    <string name="dashboard_recent_devices">RECENT DEVICES</string>
+    <string name="dashboard_recent_empty">No recent devices yet</string>
+    <string name="dashboard_recent_empty_action">↑ Send</string>
+
+    <!-- ===== Send · discovery (§6.3) ===== -->
+    <string name="discovery_searching">Searching for devices</string>
+    <string name="discovery_searching_hint">Look for peers on the same Wi-Fi network</string>
+    <string name="discovery_transport_label">TRANSPORT</string>
+    <string name="discovery_queue_label">QUEUE</string>
+    <string name="discovery_transport_lan">Wi-Fi LAN</string>
+    <string name="discovery_queue_empty">Nothing queued</string>
+    <string name="discovery_discovered">DISCOVERED</string>
+    <string name="discovery_connect">Connect</string>
+    <string name="discovery_manual_ip">Manual IP</string>
+    <string name="discovery_broadcast_to">Broadcast to (%1$d)</string>
+    <string name="discovery_empty">No devices found yet</string>
+    <string name="discovery_empty_action">Open Connection Doctor</string>
+    <string name="discovery_try_nearby">Try Nearby instead</string>
+
+    <!-- ===== Transfer and broadcast (§6.4–6.8) ===== -->
+    <string name="transfer_listening">Waiting for a sender</string>
+    <string name="transfer_listening_hint">Keep this screen open until the other phone connects</string>
+    <string name="transfer_empty_queue">Nothing queued yet</string>
+    <string name="transfer_empty_action">Choose files</string>
+    <string name="transfer_end_title">End this session?</string>
+    <string name="transfer_end_body">End this session? Queued files will be paused.</string>
+    <string name="transfer_end_confirm">End</string>
+    <string name="transfer_end_cancel">Keep going</string>
+    <string name="transfer_minimized">Transfer minimized · the session keeps running</string>
+    <string name="broadcast_empty">No phones in this broadcast yet</string>
+    <string name="broadcast_empty_action">Choose phones</string>
+
+    <!-- ===== WebShare (§6.16b, §7) ===== -->
+    <string name="webshare_start">Start WebShare</string>
+    <string name="webshare_stop">Stop WebShare</string>
+    <string name="webshare_sessions">SESSIONS</string>
+    <string name="webshare_sessions_empty">No browser sessions</string>
+    <string name="webshare_sessions_empty_action">Start WebShare</string>
+    <string name="webshare_address_placeholder">Not running</string>
+
+    <!-- ===== Files (§6.9) ===== -->
+    <string name="files_tab_photos">Photos</string>
+    <string name="files_tab_videos">Videos</string>
+    <string name="files_tab_music">Music</string>
+    <string name="files_tab_apps">Apps</string>
+    <string name="files_tab_files">Files</string>
+    <string name="files_hint">Tap a photo to open the viewer · tap its circle to select it</string>
+    <string name="files_empty_photos">No photos yet</string>
+    <string name="files_empty_videos">No videos yet</string>
+    <string name="files_empty_music">No music yet</string>
+    <string name="files_empty_apps">No apps listed yet</string>
+    <string name="files_empty_files">No files here</string>
+    <string name="files_empty_action">Add a folder</string>
+    <string name="files_sort_title">Sort by</string>
+
+    <!-- ===== History (§6.12) ===== -->
+    <string name="history_received">Received</string>
+    <string name="history_sent">Sent</string>
+    <string name="history_empty_received">Nothing received yet</string>
+    <string name="history_empty_sent">Nothing sent yet</string>
+    <string name="history_empty_action">↑ Send</string>
+
+    <!-- ===== Settings (§6.13) ===== -->
+    <string name="settings_section_accent">ACCENT COLOUR</string>
+    <string name="settings_section_appearance">APPEARANCE</string>
+    <string name="settings_section_transfer">TRANSFER</string>
+    <string name="settings_section_system">SYSTEM</string>
+    <string name="settings_section_diagnostics">DIAGNOSTICS</string>
+    <string name="settings_section_about">ABOUT</string>
+    <string name="settings_profile_subtitle">Tap to rename · Sunflower avatar</string>
+    <string name="settings_dark_mode">Dark mode</string>
+    <string name="settings_dark_mode_sub">Sunflower hue</string>
+    <string name="settings_follow_system">Follow system</string>
+    <string name="settings_sounds">Sounds</string>
+    <string name="settings_sounds_sub">Connect · fail · success</string>
+    <string name="settings_conflict_policy">Conflict policy</string>
+    <string name="settings_conflict_policy_sub">Rename duplicates</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notifications_sub">Transfer progress</string>
+    <string name="settings_broadcast_peers">Broadcast peers</string>
+    <string name="settings_broadcast_peers_sub">Maximum 4 phones</string>
+    <string name="settings_storage_access">Storage access</string>
+    <string name="settings_storage_access_sub">Download · SAF folders</string>
+    <string name="settings_battery">Battery optimization</string>
+    <string name="settings_battery_sub">Exemption disabled — tap to request</string>
+    <string name="settings_logs">Logs</string>
+    <string name="settings_logs_sub">View · export .txt · clear</string>
+    <string name="settings_crash_reports">Crash reports</string>
+    <string name="settings_crash_reports_sub">Local · never uploaded</string>
+    <string name="settings_doctor_sub">Wi-Fi · Multicast · Play Services</string>
+    <string name="settings_replay_onboarding">Replay onboarding</string>
+    <string name="settings_replay_onboarding_sub">Show the tour again</string>
+    <string name="settings_help">Help &amp; FAQ</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_sub">%1$s (%2$d) · No accounts. No cloud. No ads.</string>
+
+    <!-- ===== Logs (§6.14) ===== -->
+    <string name="logs_export">Export .txt</string>
+    <string name="logs_errors_only">Errors only</string>
+    <string name="logs_clear">Clear</string>
+    <string name="logs_empty">No log entries yet</string>
+
+    <!-- ===== Connection Doctor (§6.15) ===== -->
+    <string name="doctor_request_battery">✓ Request battery exemption</string>
+    <string name="doctor_refresh">⟳ Refresh checks</string>
+    <string name="doctor_empty">Checks run when you open this screen</string>
+
+    <!-- ===== Help (§6.17) ===== -->
+    <string name="help_empty">Help articles arrive with the screens they explain</string>
+    <string name="help_open_doctor">Open Connection Doctor</string>
+
+    <!-- ===== Onboarding (§6.1) ===== -->
+    <string name="onboarding_open_app">Open Morsecode</string>
+    <string name="onboarding_skip">Skip</string>
+
+    <!-- ===== Notification channels (§6.18) ===== -->
+    <string name="channel_transfers">Transfers</string>
+    <string name="channel_requests">Requests</string>
+    <string name="channel_webshare">WebShare</string>
+    <string name="channel_playback">Playback</string>
+
+    <!-- ===== Stubs: every route exists before its screen does (§5.1) ===== -->
+    <string name="stub_screen">This screen arrives in a later stage</string>
+
+    <!-- ===== Content descriptions for the shell (§15.1) ===== -->
+    <string name="cd_back">Back</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_sort">Sort</string>
+    <string name="cd_view_toggle">Switch between grid and list</string>
+    <string name="cd_overflow">More options</string>
+    <string name="cd_filter">Filter</string>
+    <string name="cd_clear_all">Clear all</string>
+    <string name="cd_help">Help</string>
+    <string name="cd_close">Close</string>
 </resources>
+

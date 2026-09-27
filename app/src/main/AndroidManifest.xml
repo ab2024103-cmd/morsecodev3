@@ -140,6 +140,25 @@
             </intent-filter>
         </activity>
 
+        <!--
+          §5.2 [CHANGED] / §8.1: the photo viewer and the video player are
+          immersive, full-bleed activities whose own action row owns the
+          bottom edge. They are separate activities precisely so the bottom
+          navigation is structurally absent, not hidden by a flag a screen
+          could forget. Not exported: they are opened from inside the app.
+        -->
+        <activity
+            android:name=".feature.viewer.ViewerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.Morsecode" />
+
+        <activity
+            android:name=".feature.viewer.VideoPlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.Morsecode" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -83,4 +83,8 @@
     <!-- Fixed neutrals used by immersive surfaces (§6.10: black in dark, #141310 in light). -->
     <color name="viewer_backdrop_dark">#000000</color>
     <color name="viewer_backdrop_light">#141310</color>
+    <!-- Both viewer backdrops are near-black, so chrome is the dark theme's ink. -->
+    <color name="viewer_chrome">#F5F5F4</color>
+    <!-- Circle behind the viewer's back/overflow glyphs: #000000 @ 40%. -->
+    <color name="viewer_chrome_scrim">#66000000</color>
 </resources>

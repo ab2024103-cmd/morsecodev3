@@ -31,4 +31,13 @@
       washed surface needs to know which theme it is in without reading a hex.
     -->
     <attr name="isLightSurface" format="boolean" />
+
+    <!--
+      §6.10: the immersive viewer and video player are black in dark and
+      #141310 in light, with chrome (back circle, name, meta) that stays
+      legible on both. Attributes, so §4.13 still holds inside the viewer.
+    -->
+    <attr name="colorViewerBackdrop" format="color" />
+    <attr name="colorViewerChrome" format="color" />
+    <attr name="colorViewerChromeScrim" format="color" />
 </resources>

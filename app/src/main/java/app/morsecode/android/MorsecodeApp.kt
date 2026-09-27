@@ -3,6 +3,7 @@ package app.morsecode.android
 import android.app.Application
 import app.morsecode.android.core.ui.Themes
 import app.morsecode.android.core.util.Ids
+import app.morsecode.android.core.util.Notifications
 import app.morsecode.android.di.AppServices
 
 /**
@@ -22,6 +23,9 @@ class MorsecodeApp : Application() {
         // Theme bootstrap (§4.1). Prefs resolves first run to the system
         // setting, or Dark when the system has no preference.
         Themes.applyNightMode(AppServices.prefs)
+
+        // §6.18 channels exist from process start; nothing posts to them yet.
+        Notifications.createChannels(this)
 
         AppServices.logStore.i("${Ids.logHeader(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)} started")
     }

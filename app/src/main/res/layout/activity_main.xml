@@ -1,10 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Shell container. The bottom navigation and the fragment destinations are
-  added in Stage 3 (§5.1, §5.2); this file exists so the skeleton runs.
+  Shell container (§5.1): one fragment host above a four-tab bottom navigation.
+  The nav is hidden only by the immersive viewer and video player, which are
+  separate activities, and by any destination that declares it (§5.2).
 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/nav_host"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBgBase" />
+    android:orientation="vertical"
+    android:background="?attr/colorBgBase"
+    android:fitsSystemWindows="true">
+
+    <FrameLayout
+        android:id="@+id/nav_host"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/hairline"
+        android:background="?attr/colorHairline" />
+
+    <app.morsecode.android.core.ui.BottomNavView
+        android:id="@+id/bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+</LinearLayout>

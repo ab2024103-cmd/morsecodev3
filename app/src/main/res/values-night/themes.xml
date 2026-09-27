@@ -18,6 +18,7 @@
         <item name="colorInkOnAccent">@color/ink_on_accent</item>
 
         <item name="isLightSurface">false</item>
+        <item name="colorViewerBackdrop">@color/viewer_backdrop_dark</item>
         <item name="cardElevation">@dimen/card_elevation_dark</item>
 
         <item name="colorPrimary">@color/accent_sunflower</item>
