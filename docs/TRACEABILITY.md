@@ -177,10 +177,21 @@ rules, §4.14 responsive rules, and the Appendix A strings those components need
 
 ### CI evidence
 
-Run **36295738614** on `arena/01a0dfbc-morsecodev3`, job 108554117962: success in
-3 m 54 s, all 16 steps green — lint gate, unit tests, `assembleDebug
-assembleRelease`, both APKs published to the rolling prerelease
-`ci-arena-01a0dfbc-morsecodev3`. That the whole design system compiles against
+Run **36295738614** (job 108554117962, 3 m 54 s, 16/16 steps green) built the
+stage; run **36296022749** re-ran it with the tally step and is the one to read.
+Its release notes on `ci-arena-01a0dfbc-morsecodev3` record:
+
+```
+- unit tests: 18 tests, 0 failed, 0 skipped - AccentTest (2), FmtTest (6), IdsTest (7), PeerPaletteTest (3)
+- lint gate (§20.8): passed
+- signed with the stable upload key: false
+morsecode-1.0.0-debug.apk             5 692 075 B
+morsecode-1.0.0-preview-unsigned.apk  1 214 355 B
+```
+
+The release variant is still built with the debug key, so §19.3 and A18 remain
+NOT satisfied until the four repo secrets exist. The 1.2 MB release APK is well
+inside the §19.4 budget, with no screens in it yet. That the whole design system compiles against
 the real SDK is the strongest verification available here; the sandbox has no
 JDK or Android SDK and cannot reach any artifact host.
 
