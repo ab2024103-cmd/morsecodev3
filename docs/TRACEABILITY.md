@@ -874,3 +874,77 @@ calendar day and failed a correct grouping.
     how one of them ends up a toast.
 
 ---
+
+## Stage 11 — the media players (§6.11)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/media/SeekContract.kt` | §6.11, A32 | THE seek contract, shared by every player: tap-to-seek, clamping, ±10 s, 5 s key stepping, Home/End, the elapsed/"-remaining" labels, the spoken announcement, and the `DragState` that makes the clock yield while a finger is down. §6.11 says all four players use the same contract, so there is exactly one. |
+| `core/media/VolumeControl.kt` | §6.11 | 0–100 continuous, off/low/high levels, **mute-and-remember**, hardware-key stepping and the 3 s idle dismissal. |
+| `core/media/PlaybackQueue.kt` | §6.11 | Process-scoped queue: shuffle, the three repeat modes, "UP NEXT · n SONGS", the conventional Previous behaviour, and reorder/remove that keep the needle on the right track. |
+| `core/data/PlaybackPrefs.kt` | §6.11 [GAP] | Liked, Save-to-playlist and the per-file resume position — on-device only, no account anywhere (§17.1). A position within 5 s of either end is not remembered, because resuming 2 s from the end replays nothing. |
+| `core/ui/SeekBarView.kt` | §6.11, §15 | The drawn track is 5 dp; the measured hit area is 24 dp. Accent→lime gradient, an always-visible knob, live scrub callbacks, `onSeek` on release, ← →/Home/End, and an announced value. |
+| `core/media/PlaybackService.kt` | §6.11, §3.7 | MediaSession-backed foreground service with audio focus (including ducking) and becoming-noisy handling, a media notification with prev/play-pause/next, and completion that asks the queue what comes next. |
+| `feature/viewer/MusicPlayerFragment.kt` | §6.11, §5.2 | Now-Playing: artwork, title, "Artist · Album", the seek bar with both clocks, shuffle · previous · 56 dp accent play/pause · next · repeat, then Save · Share · Liked · Queue, then UP NEXT. Keeps the bottom nav. |
+| `feature/viewer/VideoPlayerActivity.kt` | §6.11, G13 | Immersive surface, chrome on tap, the same seek bar, replay/forward 10 s, the volume slider, CC dimmed with "No subtitles" when no track exists, landscape fullscreen, resume per file. |
+| `feature/filemanager/FilesFragment.kt` | §6.11, A23 | Tapping a track sets the queue, starts the service and opens Now-Playing. |
+| `app/src/test/.../PlayerContractTest.kt` | §21.1 | 14 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A32** (in all four players: a tap at 75 % jumps to 75 %, a drag scrubs continuously with the labels following the thumb, the clock does not fight the drag, release commits, ±10 s clamps at both ends; verified paused and playing) | **BLOCKED** | Two of the four players do not exist yet (the WebShare audio bar and the in-browser video player are Stage 15), and the rest is a finger-on-glass observation. Everything decidable is executed: `aTapAtSeventyFivePercentJumpsToSeventyFivePercent` (including both out-of-track cases and a zero-length item), `theSkipButtonsClampAtBothEndsAndNeverWrap`, `keyboardStepsFiveSecondsAndHomeEndJumpToTheEnds`, `theClockYieldsWhileTheUserIsDragging` (the clock ticks underneath and is ignored), `aCancelledDragLeavesThePositionAlone`, and `theLabelsAndTheAnnouncementReadAsSpecified` — which pins "2 minutes 43 seconds of 4 minutes 8 seconds" verbatim. Both native players call this object; neither has its own arithmetic. |
+| **A23** (with nothing selected, tapping a video opens the player and tapping a track starts it; after one long-press a tap toggles; the Send button shows count and bytes) | **BLOCKED** | Gestures need a finger. This stage closes the "tapping a track starts it" half in code: `FilesFragment.open` sets the queue, starts `PlaybackService` and opens Now-Playing. The selection half was executed in Stage 10. |
+| §6.11 volume is a real control, not a mute toggle | **PASS** | `volumeIsContinuousAndMuteRemembersTheLevel` (mute restores the *previous* level, not a default), `volumeClampsAndTheHardwareKeysMoveTheSameSlider`, `theVolumeSliderDismissesAfterThreeSecondsIdle`. |
+| §6.11 repeat / shuffle / previous semantics | **PASS** | `repeatOffStopsAtTheEndAndRepeatAllWraps` (repeat ONE stays on the track; OFF does not loop silently) and `previousRestartsTheTrackAfterAFewSecondsAndOtherwiseGoesBack`. |
+| §6.11 queue reorder and remove | **PASS** | `reorderingKeepsThePlayingTrackPlaying` and `removingAnotherRowLeavesTheNeedleAloneAndRemovingTheCurrentAdvances`. |
+| §6.11 playback survives tab changes | **PASS, structural** | The player lives in `PlaybackService`; the queue and position live in a process-scoped `PlaybackQueue`. The fragment holds no player object, so there is nothing for a tab change to destroy. Observing it needs a device (Stage 17). |
+| §6.11 audio focus and becoming-noisy | **PASS, static** | Focus is requested before playback, LOSS pauses, TRANSIENT_CAN_DUCK ducks to 30 %, and `ACTION_AUDIO_BECOMING_NOISY` pauses. |
+| G13 CC only when a track exists | **PASS, static** | The button is dimmed and says "No subtitles" unless a sidecar `.srt` exists next to the file. |
+| §15 accessibility of the bar | **PASS, static** | Focusable, 24 dp target, key handling, and an announcement on every commit. TalkBack itself is Stage 16/17. |
+| A18 | **PASS** | Gate `PASS — no findings`, 239 files; **167 tests, 0 failed** in run 36313978588. |
+
+### CI evidence
+
+Run **36313978588**, all steps green: 167 tests, 0 failed, including
+`PlayerContractTest (14)`. One earlier run failed and is part of the record:
+**36313809444**, where my test asserted that removing the *currently playing*
+row leaves it playing — which is not a behaviour anyone would want. It became
+two tests, and the real rule (the item that takes its place becomes current)
+is now pinned.
+
+### Not yet done in this stage
+
+- **The queue sheet on Now-Playing is a stub.** §6.11's Queue button should
+  open the up-next sheet with drag-to-reorder and swipe-to-remove; the queue
+  operations behind it (`move`, `remove`) exist and are tested, but the sheet
+  is not built. Stage 12 has the last UI surfaces and it belongs there.
+- Artwork is the note tile in every case: real embedded album art is decoded
+  by `ThumbnailCache` but the Now-Playing screen does not request it yet.
+- The "Artist · Album" line shows the artist only — `MediaLibrary` does not
+  read `ALBUM` into `MediaItem`.
+- Subtitle support is detection plus an honest disabled state; rendering an
+  `.srt` is not implemented, and §6.11 only requires the button to be honest.
+- Video uses `VideoView`/`MediaPlayer` rather than ExoPlayer, so exotic codecs
+  depend on the device. §3.3's dependency budget does not include ExoPlayer
+  and §6.11 does not name it.
+
+### Deviations and resolved tensions
+
+28. **The music player is a service plus a renderer, not a screen that plays.**
+    §6.11 requires playback to continue across tab changes, minimise and
+    screen off; the only way that is structurally true is for no player object
+    to exist in the fragment at all.
+29. **The seek arithmetic is one shared object rather than a base class.** The
+    music bar, the video bar and the volume slider are all `SeekBarView`, and
+    Stage 15's two browser players will call the same rules from JavaScript —
+    a shared *contract* survives that boundary, a shared superclass would not.
+30. **Removing the playing track advances to whatever takes its place.** §6.11
+    does not say; the alternatives are stopping playback or jumping to the top
+    of the queue, and both are more surprising than continuing where the list
+    continues.
+
+---
