@@ -5,7 +5,12 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
+import androidx.test.espresso.matcher.ViewMatchers.withParent
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import app.morsecode.android.core.ui.TabStripView
+import org.hamcrest.Matchers.allOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -46,14 +51,17 @@ class FilesFlowTest {
             instrumentation.waitForIdleSync()
 
             for (tab in listOf("Photos", "Videos", "Music", "Apps", "Files")) {
-                onView(withText(tab)).perform(click())
+                // "Files" is also the screen title and a bottom-nav label, so
+                // the matcher has to say WHICH "Files" it means.
+                onView(allOf(withText(tab), withParent(isAssignableFrom(TabStripView::class.java))))
+                    .perform(click())
                 instrumentation.waitForIdleSync()
                 Thread.sleep(400)
                 scenario.onActivity { Screenshots.capture(it, "06.9-files-${tab.lowercase()}", "dark") }
             }
 
             // §6.9: the sort icon is a working control, not decoration.
-            onView(withText("Sort")).perform(click())
+            onView(withContentDescription("Sort")).perform(click())
             instrumentation.waitForIdleSync()
             Thread.sleep(400)
             onView(withText("Size")).perform(click())

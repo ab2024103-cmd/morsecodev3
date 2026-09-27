@@ -18,10 +18,25 @@ object Screenshots {
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
+    /**
+     * The first run pulled nothing, because the app-private external directory
+     * is not readable by `adb pull` on every image. `/sdcard/morsecode-shots`
+     * is, on both API 23 and 34, and the suite holds WRITE_EXTERNAL_STORAGE on
+     * the old one.
+     */
     val directory: File by lazy {
-        val base = instrumentation.targetContext.getExternalFilesDir(null)
-            ?: instrumentation.targetContext.filesDir
-        File(base, "screenshots").apply { mkdirs() }
+        val shared = File(android.os.Environment.getExternalStorageDirectory(), "morsecode-shots")
+        val usable = if (shared.mkdirs() || shared.isDirectory) {
+            shared
+        } else {
+            File(
+                instrumentation.targetContext.getExternalFilesDir(null)
+                    ?: instrumentation.targetContext.filesDir,
+                "screenshots",
+            ).apply { mkdirs() }
+        }
+        android.util.Log.i("Morsecode", "screenshots → ${usable.absolutePath}")
+        usable
     }
 
     /**

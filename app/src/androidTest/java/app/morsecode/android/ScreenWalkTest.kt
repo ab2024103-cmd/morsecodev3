@@ -32,6 +32,13 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ScreenWalkTest {
 
+    /** API 23 needs this granted before anything can write to /sdcard. */
+    @get:org.junit.Rule
+    val storage: androidx.test.rule.GrantPermissionRule =
+        androidx.test.rule.GrantPermissionRule.grant(
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        )
+
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
     private fun setTheme(dark: Boolean) {

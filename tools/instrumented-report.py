@@ -67,6 +67,15 @@ def main() -> None:
             print("- `%s`" % os.path.basename(note))
         print()
 
+    listing = "emulator-evidence/shots-listing.txt"
+    if not shots and os.path.exists(listing):
+        print("### Why no screenshots were collected")
+        print()
+        print("```")
+        print(open(listing, errors="replace").read()[:1500])
+        print("```")
+        print()
+
     if shots:
         print("### Screens photographed")
         print()

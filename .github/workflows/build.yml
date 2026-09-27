@@ -260,6 +260,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             adb logcat -c || true
+            adb shell mkdir -p /sdcard/morsecode-shots || true
             adb logcat > logcat-${{ matrix.api }}.txt &
             set +e
             ./gradlew --no-daemon connectedDebugAndroidTest
@@ -277,9 +278,14 @@ jobs:
             adb shell wm size reset || true
             adb shell wm density reset || true
 
-            # Pull the PNGs the suite captured.
+            # Pull the PNGs the suite captured. The first run collected none,
+            # so this tries both locations and records what was actually there.
             mkdir -p screenshots
-            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots || true
+            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1 || true
+            adb shell ls -l /sdcard/Android/data/app.morsecode.android/files/screenshots >> shots-listing.txt 2>&1 || true
+            adb pull /sdcard/morsecode-shots screenshots 2>&1 | tail -3 || true
+            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots 2>&1 | tail -3 || true
+            ls -R screenshots > shots-pulled.txt 2>&1 || true
 
       - name: Collect the evidence
         if: always()
@@ -290,7 +296,9 @@ jobs:
           cp logcat-${{ matrix.api }}.txt emulator-evidence/ 2>/dev/null || true
           cp -r app/build/reports/androidTests emulator-evidence/reports 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results 2>/dev/null || true
-          find emulator-evidence -type f | head -50
+          cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
+          find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
+          cat emulator-evidence/INDEX.txt
           python3 tools/instrumented-report.py > emulator-report.md || true
           cat emulator-report.md
 
