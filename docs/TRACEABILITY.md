@@ -1317,3 +1317,113 @@ build with seven findings (`PhotoDeckView`, `SettingRowView`, and five in
     wasteful but correct, and a blank tile would be worse (§6.19).
 
 ---
+
+## Stage 17 — the §22 table, CI and release
+
+### What this stage added
+
+| File | Sections | Notes |
+| --- | --- | --- |
+| `core/webshare/UploadMath.kt` | §7.7, §21.1 | The chunk arithmetic both sides derive from, so an off-by-one cannot land on only one of them. |
+| `app/src/test/.../UploadAndTabsTest.kt` | §21.1 | The last two tests §21.1 names: chunked-upload index math, and the tab/selection state machines. |
+| `docs/DEVICE_MATRIX.md` | §21.2 | The sixteen-case run sheet, marked **NOT EXECUTED**. |
+
+`§21.1` is now complete: resume-offset math, CRC/MRSC framing encode+decode,
+the queue state machine including pause/cancel/retry, all four conflict
+policies plus apply-to-all, the §10.4 broadcast formulas, the tab/selection
+state machines, `Fmt` rendering, MediaStore date-unit conversion, and
+chunked-upload index math.
+
+### §22 — every criterion, in order
+
+Per §22.1 the only verdicts are PASS (executed, with the output), BLOCKED
+(cannot be executed here — and why), or FAIL. "Shipped, not confirmed" is
+BLOCKED. The environment has **no JDK or Android SDK locally, no emulator, no
+phone, and no browser**; CI is a headless Linux runner. Everything below is
+judged against that.
+
+| # | Criterion | Verdict | Evidence / why not |
+| --- | --- | --- | --- |
+| A1 | LAN discovery + 144 MB at Wi-Fi speed; Nearby peers in the same list | **BLOCKED** | Two phones. Executed instead: `LanLoopbackTest` moves 600 KB over real TCP byte-identically; `Discovery.preferred` prefers LAN; Nearby publishes into the same list. |
+| A2 | Pause/cancel one file → others complete, nothing stuck | **BLOCKED** | Two phones. `TransferEngineTest.cancellingOneInFlightFileLetsTheRestComplete` + `pausingOneFileLeavesItResumableAndTheOthersUntouched`. |
+| A3 | End mid-transfer, restart → resumes automatically | **BLOCKED** | Two phones. `losingASessionPausesEverythingAndFailsNothing` + `aNewSessionRequeuesAndFinishesTheInterruptedBatch`. |
+| A4 | WebShare never idles out | **BLOCKED** | A 30-minute device observation. Structural: `WebShareController` contains no timer, no lifecycle observer and no session count; `stop()` has two callers, both the user. |
+| A5 | Browser consent gate + token-guarded API | **BLOCKED** | The popup needs a phone. Server half **executed over real HTTP**: accepted → token → 200; rejected → 401 on `/api/counts`, `/api/files`, `/download`. |
+| A6 | Never "chunk magic mismatch"; byte-by-byte header read covered by a unit test | **PASS** | `FramingTest` (8 tests) including a demonstration that a `BufferedReader` *would* have eaten the frame; `LanLoopbackTest` proves it over sockets with matching SHA-256. |
+| A7 | Day groups once and in order; A14 paging; DATE_TAKEN units | **BLOCKED** | Device. `MediaQueriesTest` (INV-9/INV-10, pages tile the cursor), `DayGroups` tests, `StorageTest` for the write units. |
+| A8 | One summary per batch; SKIPPED ≠ FAILED | **BLOCKED** | Two phones. `aBatchCompletesAndProducesExactlyOneSummary`, `skippedIsReportedSeparatelyFromFailed`, `QueuePresentationTest`'s two-line rule. |
+| A9 | Broadcast to 3 phones; tiles 3 · 212 · 636 then 3 · 3 · 636; 9 deliveries | **BLOCKED** | Three phones. `BroadcastTest` asserts the deck's own numbers and INV-B1…B5 against a fake transport. |
+| A10 | The full flow on Android 6 (API 23) | **BLOCKED** | No API 23 device or emulator. Structural: `minSdk 21`, the gate's Java-8 guard, 23-safe `PendingIntent` flags, the legacy `FileSink` path. |
+| A11 | Light+dark render; accent retints everything; no hardcoded hex | **BLOCKED** | The hex clause is **PASS** (gate, 256 files, since Stage 2) and the site takes its accent from `/api/info`; "renders correctly" needs eyes. |
+| A12 | WebShare behaviours (no filenames under tiles, one upload UI, Range player…) | **BLOCKED** | A browser. Each clause implemented and cited in the Stage 14/15 blocks. |
+| A13 | Mobile browser: real names, type thumbnails, individual selection | **BLOCKED** | A phone browser. §7.9's collapse keeps the name, size and date. |
+| A14 | Chunked uploads pause/resume from the last chunk; real byte count | **BLOCKED** | A browser. `UploadAndTabsTest` executes the index math; the server returns the bytes it actually wrote. |
+| A15 | Launcher icon; crash capture and .txt export with the version header | **BLOCKED** | A real uncaught exception on a device. Executed: `theExportedLogStartsWithTheVersionHeader`, `crashCaptureObeysTheSettingsSwitch`; the icon was generated from the logo in Stage 1. |
+| A16 | Permissions match §3.5; no stranger-link; nothing leaves the subnet | **BLOCKED** | The proxy/airplane test. Clause 1 **PASS executed** (`ManifestPermissionsTest`, set equality both ways); clause 2 PASS (A19's gate, no such feature). |
+| A17 | TalkBack end to end; descriptions; 48 dp; largest font scale | **BLOCKED** | TalkBack. Enforced instead: the gate now **fails the build** on an undescribed `ImageView` (it found seven), and every control is built through helpers with a 48 dp minimum. |
+| A18 | Strings escaped and unique; gate green; tests green; **signed** release + debug APKs published | **BLOCKED on one clause** | Three of four clauses **PASS**: strings (gate), gate green, 227 tests green, both APKs published to the rolling prerelease. The fourth cannot pass here: no `KEYSTORE_B64` / `KEY_ALIAS` / `KEY_PASSWORD` / `STORE_PASSWORD` secrets exist, and §19.3 **forbids** inventing a throwaway key. CI therefore publishes `morsecode-1.0.0-preview-unsigned.apk` and says so in the release notes. The moment the four secrets exist the same workflow signs — no code change. |
+| A19 | No "morselink" anywhere the build ships | **PASS** | `grep -ri "morselink" . --exclude-dir=docs --exclude-dir=.git` → **0 matches**; `IdsTest` pins every prescribed identifier. |
+| A20 | WebShare music ✕ releases the element | **BLOCKED** | A browser. `closePlayer` pauses, drops `src`, calls `load()`, nulls the reference. |
+| A21 | Per-page selection, select-all, Download vs zip, ticking a video never plays | **BLOCKED** | A browser. Archive half executed (`WebShareTest` zip tests). |
+| A22 | Folder rows show a thumbnail of the newest item; WhatsApp/Telegram in quick access | **BLOCKED** | A browser. Thumbnails are now the cached, sized ones (Stage 16). |
+| A23 | Phone: tap opens, long-press then tap toggles, Send shows count and bytes | **BLOCKED** | A finger. `FilesPresentationTest` executes the basket arithmetic. |
+| A24 | Picker → Send navigates, selection empty, snackbar names the peer | **BLOCKED** | A finger. `sendTakesTheBasketAndLeavesItEmpty`; `sendSelection` has no toast-only path. |
+| A25 | A ticked folder sends as `<folder>.zip` with its recursive size | **BLOCKED** | A finger. The archive exists and is tested (Stage 14 closed Stage 10's gap). |
+| A26 | Export .txt raises the system chooser; first line "Morsecode 1.0.0 (1)" | **BLOCKED** | A device with apps. Content asserted verbatim; the intent is a real `createChooser`. |
+| A27 | WebShare lightbox: open, ‹ ›, Select, ✕/backdrop/Esc; no send-to-phone control | **BLOCKED** | A browser. All of it built; the bar has exactly Download, zip, Clear. |
+| A28 | Broadcast lands on Discovery in multi-select; two opens the sender; one is refused | **BLOCKED** | A finger. Routing and the refusal executed in `ShellTest`; the per-peer connect and sender entry are in place (Stage 13). |
+| A29 | Tapping a thumbnail opens the viewer on THAT photo | **BLOCKED** | A finger. `ViewerSession` carries the rendered list and the tapped index. |
+| A30 | Files address bar; categories and folders open real listings; every row tickable | **BLOCKED** | A finger. `PathSegments` tests; `DirectoryAdapter` gives folders the same check target. |
+| A31 | Tick an item mid-list: the view does not move | **BLOCKED** | A screen. The **cause was found and removed** in Stage 15 (the browser re-rendered on every tick); the phone side uses keyed in-place updates. |
+| A32 | The seek contract in all four players | **BLOCKED** | A finger. `PlayerContractTest` (14 tests) executes the contract the two native players call; the two browser players implement the same rules. |
+| A33 | Viewer: 1:1 drag, ~22 % commit, dots, no ‹ ›, ← →, Send FAB really sends | **BLOCKED** | A finger. `DeckPhysics` tests cover the threshold, the flick, the change of mind and the wrap. |
+| A34 | Sort re-orders every tab, folders first, echoed, survives tab switches | **BLOCKED** | A finger. `SortRules` tests across all four keys and both directions. |
+| A35 | 320–840 dp, both orientations, largest font scale, split-screen | **BLOCKED** | A screen. `gridsRespanRatherThanStretch` executes the span rule across all six widths. |
+
+**Tally: 2 PASS (A6, A19), 33 BLOCKED, 0 FAIL.** No criterion is claimed on the
+strength of code review, and none is marked pass because it "should work".
+
+### §23 — definition of done
+
+> All 35 acceptance criteria pass on the Android 6 reference phone AND a current
+> Android device, the real-device matrix (§21.2) passes, CI is green, and signed
+> release + debug APKs are attached to the GitHub release.
+
+**NOT met, and it cannot be met from here.** Precisely:
+
+1. **CI is green** — run 36333341213: lint gate clean over 256 files, 227 unit
+   tests, 0 failures, both APKs published. ✅
+2. **The size budget (§19.4)** — release 1.7 MB against a ~6.5 MB budget, debug
+   6.2 MB against ~8 MB. ✅
+3. **Signed APKs** — ❌ the four signing secrets do not exist in this
+   repository, and §19.3 forbids a throwaway key. The debug-key preview build
+   is published instead, labelled `-preview-unsigned`.
+4. **The §21.2 matrix** — ❌ not executed; `docs/DEVICE_MATRIX.md` is the run
+   sheet.
+5. **A1–A35 on two phones** — ❌ 33 of 35 need hardware, a browser or TalkBack.
+
+### What would finish it
+
+- Add `KEYSTORE_B64`, `KEY_ALIAS`, `KEY_PASSWORD`, `STORE_PASSWORD` as repo
+  secrets. The workflow already installs them and signs; A18's fourth clause
+  then passes with no code change.
+- Run `docs/DEVICE_MATRIX.md` on the MYA-L10 and a current phone, plus a laptop
+  browser, and record each case. That settles A1–A5, A7–A17 and A20–A35.
+
+### Known gaps carried into that run
+
+Recorded honestly rather than left to be discovered:
+
+- §14.1's "keep warning after a background-kill-shaped death" is not
+  implemented (Stage 16).
+- The WebShare SSE endpoint is a 2-second poll wearing an SSE coat (Stage 15).
+- `/push-download` marks delivery on a whole-file request only (Stage 15).
+- §10.2's explicit round-robin send window is not implemented; per-peer
+  workers rely on the OS scheduler (Stage 13).
+- §6.8.3's receiver-side "Broadcast · Phone · LAN" subtitle and [FROM] badge
+  are not wired (Stage 13).
+- The Now-Playing queue sheet, the profile rename, the in-app Trash and the
+  Files long-press toolbar are not built (Stages 10–12).
+- `ThumbnailStore` has no eviction policy (Stage 16).
+
+---
