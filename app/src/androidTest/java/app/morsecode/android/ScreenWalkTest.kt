@@ -32,12 +32,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ScreenWalkTest {
 
-    /** API 23 needs this granted before anything can write to /sdcard. */
-    @get:org.junit.Rule
-    val storage: androidx.test.rule.GrantPermissionRule =
-        androidx.test.rule.GrantPermissionRule.grant(
-            android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-        )
+    // No GrantPermissionRule here: API 34 answers WRITE_EXTERNAL_STORAGE with
+    // a SecurityException, and screenshots are written by the shell anyway.
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 

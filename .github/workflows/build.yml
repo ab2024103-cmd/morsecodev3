@@ -259,33 +259,46 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            adb logcat -c || true
-            adb shell mkdir -p /sdcard/morsecode-shots || true
-            adb logcat > logcat-${{ matrix.api }}.txt &
+            # Never let a failure end the script: the evidence below is the
+            # whole point of the job, and the real verdict is enforced by the
+            # last step. The first two runs collected nothing because a failing
+            # Gradle invocation stopped everything after it.
             set +e
-            ./gradlew --no-daemon connectedDebugAndroidTest
-            echo "gradle_exit=$?" >> "$GITHUB_ENV"
-            set -e
+            adb logcat -c
+            adb logcat > logcat-${{ matrix.api }}.txt &
+            adb shell mkdir -p /sdcard/morsecode-shots
+
+            # One invocation per class, so a crash in one suite (there is a
+            # real one on API 23) cannot cancel the others.
+            FAILED=0
+            for CLASS in AccentAndSizeTest FilesFlowTest LoopbackTransferTest ScreenWalkTest WebShareDeviceTest; do
+              echo "=== $CLASS ==="
+              ./gradlew --no-daemon connectedDebugAndroidTest \
+                -Pandroid.testInstrumentationRunnerArguments.class=app.morsecode.android.$CLASS
+              [ $? -ne 0 ] && FAILED=1
+              mkdir -p "results/$CLASS"
+              cp -r app/build/outputs/androidTest-results/connected/* "results/$CLASS/" 2>/dev/null
+            done
+            echo "gradle_exit=$FAILED" >> "$GITHUB_ENV"
 
             # §21.3's size sweep: the §4.14 matrix, driven from adb.
             mkdir -p sweep
             for size in 320x640 360x740 412x870 480x960 600x960 840x1200; do
-              adb shell wm size "$size" || true
-              adb shell am start -n app.morsecode.android/.MainActivity || true
+              adb shell wm size "$size"
+              adb shell am start -n app.morsecode.android/.MainActivity
               sleep 4
-              adb exec-out screencap -p > "sweep/api${{ matrix.api }}-$size.png" || true
+              adb exec-out screencap -p > "sweep/api${{ matrix.api }}-$size.png"
             done
-            adb shell wm size reset || true
-            adb shell wm density reset || true
+            adb shell wm size reset
+            adb shell wm density reset
 
-            # Pull the PNGs the suite captured. The first run collected none,
-            # so this tries both locations and records what was actually there.
             mkdir -p screenshots
-            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1 || true
-            adb shell ls -l /sdcard/Android/data/app.morsecode.android/files/screenshots >> shots-listing.txt 2>&1 || true
-            adb pull /sdcard/morsecode-shots screenshots 2>&1 | tail -3 || true
-            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots 2>&1 | tail -3 || true
-            ls -R screenshots > shots-pulled.txt 2>&1 || true
+            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1
+            adb pull /sdcard/morsecode-shots screenshots > shots-pull.txt 2>&1
+            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots >> shots-pull.txt 2>&1
+            ls -R screenshots > shots-pulled.txt 2>&1
+            echo "script completed" > script-marker.txt
+            exit 0
 
       - name: Collect the evidence
         if: always()
@@ -295,7 +308,9 @@ jobs:
           cp -r sweep emulator-evidence/ 2>/dev/null || true
           cp logcat-${{ matrix.api }}.txt emulator-evidence/ 2>/dev/null || true
           cp -r app/build/reports/androidTests emulator-evidence/reports 2>/dev/null || true
-          cp -r app/build/outputs/androidTest-results emulator-evidence/results 2>/dev/null || true
+          cp -r results emulator-evidence/results 2>/dev/null || true
+          cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
+          cp script-marker.txt shots-pull.txt emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt

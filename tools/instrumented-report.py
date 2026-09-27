@@ -12,8 +12,11 @@ import os
 import xml.etree.ElementTree as ET
 
 def main() -> None:
-    xml_files = sorted(glob.glob("emulator-evidence/results/**/*.xml", recursive=True)) or \
-                sorted(glob.glob("app/build/outputs/androidTest-results/**/*.xml", recursive=True))
+    xml_files = sorted(glob.glob("emulator-evidence/results/**/*.xml", recursive=True))
+    if not xml_files:
+        xml_files = sorted(glob.glob("emulator-evidence/results-last/**/*.xml", recursive=True))
+    if not xml_files:
+        xml_files = sorted(glob.glob("app/build/outputs/androidTest-results/**/*.xml", recursive=True))
 
     total = failed = skipped = 0
     failures = []
@@ -40,6 +43,8 @@ def main() -> None:
 
     print("## Instrumented run")
     print()
+    marker = "emulator-evidence/script-marker.txt"
+    print("- harness script completed: **%s**" % ("yes" if os.path.exists(marker) else "NO"))
     if xml_files:
         print("- tests: **%d**, failed: **%d**, skipped: %d" % (total, failed, skipped))
     else:
