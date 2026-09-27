@@ -537,7 +537,7 @@ from the new failure report, not from guesswork.
 | §9.8 consent before anything crosses | **PASS** | `aRejectedConnectionYieldsNoSessionAndNoFiles`: no session is returned and the destination directory is empty. |
 | §9.6 both directions through one `complete()` | **PASS** | `theReceiverRecordsHistoryThroughTheSameCompletePath`: a RECEIVING row in history with state COMPLETED, and the item visible in the same queue the UI renders. |
 | §11.6 protocol versioning | **PASS** | `aVersionMismatchIsAReadableSentenceNotAFramingError`, and `LanTransport` sends that sentence as the REJECT reason and surfaces it through `onVersionProblem`. |
-| §11.5 manual pairing, no QR | **PASS** | `ProtocolTest` covers all three accepted forms, the default port, the rejections and the failure sentence. `grep -rn "qr\|zxing\|barcode" app/src/main --include=*.kt -i` → no matches; CAMERA is absent from the manifest (asserted by `ManifestPermissionsTest`). |
+| §11.5 manual pairing, no QR | **PASS** | `ProtocolTest` covers all three accepted forms, the default port, the rejections and the failure sentence. `grep -rn "qr\|zxing\|barcode" app/src/main --include=*.kt -i` → 5 matches, **all of them comments saying there is no QR** (ManualAddress, Ids, Permissions, DiscoveryFragment, WebShareFragment); no scanner, generator, route or dependency exists. CAMERA is absent from the manifest (asserted by `ManifestPermissionsTest`). |
 | §17.4 recency shortens discovery, never consent | **PASS** | `nothingStoredCouldEverSkipConsent` asserts the stored fields are exactly id, name, transport, timestamp and summary — there is no token or trust flag for a later change to lean on. |
 | A18 | **PASS** | Gate `PASS — no findings`, 213 files; **113 tests, 0 failed** in run 36301692302. |
 
