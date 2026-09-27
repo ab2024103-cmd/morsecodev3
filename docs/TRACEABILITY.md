@@ -1242,3 +1242,78 @@ Run **36324066122**, all steps green: 211 tests, 0 failed, including
     would otherwise hold an engine worker until the session died.
 
 ---
+
+## Stage 16 — battery, OEM, accessibility, performance (§14, §15, §13, §20.10)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `tools/lintgate.py` (extended) | §15.1 | A ninth check family: every `ImageView` must carry a `contentDescription` or an explicit `importantForAccessibility=NO`. It found **seven real gaps on its first run**, all fixed in this commit. |
+| `core/util/PowerPolicy.kt` | §14.1, §14.2, §14.4, §14.5 | The wake and Wi-Fi locks, the low-battery advisory and the OEM autostart list. `shouldHold` is pure, so §14.5's "never at process start and never leaked" is testable. |
+| `core/util/A11y.kt` | §15.1, §15.5 | Decorative/labelled helpers, the per-item announcement throttle, and the spoken description of a row — which always names the file and says the state in words. |
+| `core/webshare/ThumbnailStore.kt` | §7.2, §20.10 | Sized, server-cached thumbnails keyed on **id + mtime**, closing the gap Stage 14 recorded. Falls back to the original rather than a blank tile. |
+| `MorsecodeApp.kt` | §14.5, §7.8, §11.1 | Two process-scoped collectors: the power locks follow the queue, and accepted browser sessions are published into the discovery list — the Stage 15 wiring gap. |
+| `core/network/Discovery.kt`, `feature/settings/ConnectionDoctorFragment.kt` | §6.15, §20.6 | The Doctor now reads the **real** multicast lock state instead of Stage 12's optimistic guess. |
+| `feature/filemanager/FilesFragment.kt` | §20.10, §13 | The grid pages as it scrolls, at the tier's page size, appending in place. |
+| `feature/transfer/TransferFragment.kt`, `feature/settings/SettingsFragment.kt`, `core/data/Prefs.kt` | §14.1, §14.2, §14.4 | The once-only contextual exemption prompt, the advisory, and the OEM guidance article. |
+| `app/src/test/.../ReliabilityTest.kt` | §21.1 | 10 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A17** (TalkBack can complete a send end to end; every control has a description; nothing is under 48 dp; the largest font scale truncates nothing critical) | **BLOCKED** | TalkBack cannot be driven in CI. Two of the four clauses are now *enforced* rather than reviewed: the gate fails the build on an undescribed `ImageView` (§15.1), and every control in the product is built through `Buttons`, `SettingRowView`, `ScreenToolbar` or `SeekBarView`, all of which set a 48 dp minimum. `A11y.describe` and `shouldAnnounce` are executed by `ReliabilityTest`. Font-scale truncation needs a screen. |
+| **A11** (light and dark both render; the accent retints the whole app and the WebShare page instantly; no screen contains a hardcoded hex) | **BLOCKED** | The hex clause is PASS and has been since Stage 2 (the gate, now over 255 files). The WebShare half is wired — `/api/info` delivers the accent and the site sets `--accent` from it — but "renders correctly" and "instantly" are visual judgements that need both a phone and a browser. |
+| **A10** (the full flow works on Android 6 / API 23) | **BLOCKED** | No API 23 device or emulator exists here. What is structural: `minSdk 21`, the gate's Java-8 guard (no default collection methods without an SDK check), every `PendingIntent` flagged for 23, the legacy `FileSink` path for API ≤ 28, and `MediaStore`-only writes above it. The reference MYA-L10 is Stage 17. |
+| **A35** (320 / 360 / 412 / 480 / 600 / 840 dp, both orientations, largest font scale, split-screen: no horizontal scrollbar, nothing clipped, five tabs always span the width, grids re-span) | **BLOCKED** | `gridsRespanRatherThanStretch` executes the span rule across all six widths — at least three columns everywhere, monotonic in width, and wider at 840 dp than at 320 dp. The tab strip's equal flex cells (Stage 3) and the `sw480/sw600/sw840` dimens carry the rest. Seeing it is Stage 17. |
+| §14.5 locks held only while work exists | **PASS** | `locksAreHeldForActiveWorkAndReleasedForEverythingElse` (paused-idle and fully-terminal both release) and `applyingThePolicyTwiceNeitherDoubleAcquiresNorLeaks`. |
+| §14.4 advisory, never a block | **PASS** | `theLowBatteryAdvisoryFiresOnlyWhenItShould`: plugged in is silent, Battery Saver counts at any level, a small batch is never warned about. |
+| §14.2 OEM guidance | **PASS** | `autostartGuidancePutsThisPhoneFirstAndStillListsEveryone` — including that an unlisted manufacturer still sees all five. |
+| §15.5 sensible announcement intervals | **PASS** | `progressIsAnnouncedAtSensibleIntervalsButCompletionAlways`. |
+| §7.2 cached thumbnails | **PASS** | `theWebThumbnailCacheIsKeyedOnIdAndMtime` and `thumbnailDecodingPicksASampleSizeThatStillCoversTheBox`. |
+| §20.6 the Doctor stops guessing | **PASS** | `Discovery.isMulticastLockHeld` is the lock's own state. |
+| A18 | **PASS** | Gate `PASS — no findings`, 255 files, now including the accessibility family; **221 tests, 0 failed** in run 36330939294. No failed runs in this stage. |
+
+### CI evidence
+
+Run **36330939294**, all steps green: 221 tests, 0 failed, including
+`ReliabilityTest (10)`.
+
+The new gate rule was proved non-vacuous by its first run, which failed the
+build with seven findings (`PhotoDeckView`, `SettingRowView`, and five in
+`FilesAdapters`). They are fixed in the same commit; the rule now passes.
+
+### Not yet done in this stage
+
+- **§14.1's "keeps surfacing it as a warning if a transfer has previously died
+  in a way consistent with a background kill"** is not implemented: the Doctor
+  warns whenever the exemption is missing, not specifically after a suspicious
+  death. Detecting that pattern needs a persisted "was interrupted while
+  backgrounded" marker, which is honest work rather than a guess, and it is
+  not here.
+- **The §4.14 matrix has not been *re-run*** — it cannot be, without a screen.
+  The span rule is executed; the sweep is Stage 17's §21.2 item.
+- Split-screen is untested in any form.
+- The WebShare site's keyboard/focus management (§7.9's "focus moves into a
+  modal on open and back to the trigger on close") is partially done: the
+  lightbox takes focus on open, but focus is not returned to the tile on close.
+- `ThumbnailStore` has no eviction. It is bounded by the library's size rather
+  than by a budget, which is fine for a phone's own cache directory but is not
+  the LRU the native side has.
+
+### Deviations and resolved tensions
+
+43. **Accessibility became a gate rule rather than a review item.** §15 calls
+    accessibility "a functional requirement, part of normal QA", and the seven
+    findings on the first run are the argument: a rule catches what a reading
+    misses.
+44. **The power locks are driven by a collector in `MorsecodeApp`, not by the
+    service.** §14.5 ties the lock to the *batch*, and the batch outlives any
+    one service start; putting it in the collector means there is no path
+    where a lock survives an empty queue.
+45. **`/thumbnail` falls back to the original when it cannot decode.** A video
+    or an unsupported format has no JPEG to cache; serving the original is
+    wasteful but correct, and a blank tile would be worse (§6.19).
+
+---
