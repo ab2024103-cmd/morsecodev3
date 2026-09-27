@@ -3,6 +3,10 @@ package app.morsecode.android.di
 import android.content.Context
 import app.morsecode.android.core.data.Prefs
 import app.morsecode.android.core.logging.LogStore
+import app.morsecode.android.core.media.MediaLibrary
+import app.morsecode.android.core.media.ThumbnailCache
+import app.morsecode.android.core.storage.Destinations
+import app.morsecode.android.core.storage.SafStore
 import app.morsecode.android.core.util.DeviceTier
 
 /**
@@ -25,6 +29,18 @@ object AppServices {
 
     /** §13 tiering: scales work, never functionality. */
     val deviceTier: DeviceTier by lazy { DeviceTier(appContext) }
+
+    /** §12.5: the one repository behind every listing; no screen queries MediaStore. */
+    val mediaLibrary: MediaLibrary by lazy { MediaLibrary(appContext, deviceTier, logStore) }
+
+    /** §6.9.2 thumbnails, tier-scaled (§13). */
+    val thumbnails: ThumbnailCache by lazy { ThumbnailCache(appContext, deviceTier, logStore) }
+
+    /** §12.1 persisted SAF tree grants. */
+    val safStore: SafStore by lazy { SafStore(appContext, logStore) }
+
+    /** §12.4 the single write destination everything follows. */
+    val destinations: Destinations by lazy { Destinations(appContext, logStore) }
 
     fun init(context: Context) {
         appContext = context.applicationContext
