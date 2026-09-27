@@ -26,7 +26,7 @@ class QueuePresentationTest {
     private fun item(
         id: String,
         state: TransferState,
-        total: Long = 144_000_000,
+        total: Long = MB_144,
         sent: Long = 0,
         speed: Long = 0,
         resume: Long = 0,
@@ -44,27 +44,33 @@ class QueuePresentationTest {
         lastError = error,
     )
 
+    private companion object {
+        fun mb(value: Double): Long = (value * 1024 * 1024).toLong()
+        val MB_144 = mb(144.0)
+    }
+
     @Test
     fun rowMetaLinesMatchTheMockedCopy() {
+        // Sizes are binary (§4.10's Fmt), so the mock's "144 MB" is 144 MiB.
         assertEquals(
             "48.9 / 144 MB · 6.2 MB/s",
             QueuePresentation.metaLine(
-                item("a", TransferState.IN_PROGRESS, 144_000_000, 48_900_000, 6_200_000),
+                item("a", TransferState.IN_PROGRESS, MB_144, mb(48.9), mb(6.2)),
             ),
         )
         assertEquals(
             "4.1 MB · waiting",
-            QueuePresentation.metaLine(item("b", TransferState.QUEUED, 4_100_000)),
+            QueuePresentation.metaLine(item("b", TransferState.QUEUED, mb(4.1))),
         )
         assertEquals(
             "39.7 / 64 MB · resume 39.7 MB",
             QueuePresentation.metaLine(
-                item("c", TransferState.PAUSED, 64_000_000, resume = 39_700_000),
+                item("c", TransferState.PAUSED, mb(64.0), resume = mb(39.7)),
             ),
         )
         assertEquals(
             "144 MB · CRC verified",
-            QueuePresentation.metaLine(item("d", TransferState.COMPLETED, 144_000_000)),
+            QueuePresentation.metaLine(item("d", TransferState.COMPLETED, MB_144)),
         )
         // A failure says what happened, not just that it happened (§6.19).
         assertEquals(
@@ -76,12 +82,12 @@ class QueuePresentationTest {
     @Test
     fun theLiveSummaryCountsWhatIsActuallyInTheQueue() {
         val items = listOf(
-            item("a", TransferState.IN_PROGRESS, speed = 6_200_000),
+            item("a", TransferState.IN_PROGRESS, speed = mb(6.2)),
             item("b", TransferState.QUEUED),
             item("c", TransferState.PAUSED),
         )
         assertEquals("1 sending · 1 queued · 1 paused — avg 6.2 MB/s", QueuePresentation.liveDetail(items))
-        assertEquals(6_200_000L, QueuePresentation.averageSpeed(items))
+        assertEquals(mb(6.2), QueuePresentation.averageSpeed(items))
     }
 
     @Test
