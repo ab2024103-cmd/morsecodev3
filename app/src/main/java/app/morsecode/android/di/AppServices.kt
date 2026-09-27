@@ -97,6 +97,32 @@ object AppServices {
     /** §6.12 history, written by the engine's single complete() path (§9.6). */
     val historyStore: HistoryStore by lazy { HistoryStore(File(appContext.filesDir, "history.json")) }
 
+    /**
+     * §7.1 WebShare. Started and stopped only by the user (INV-4), with the
+     * browser's consent routed through the same §17.2 gate as a phone peer.
+     */
+    val webShare: app.morsecode.android.core.webshare.WebShareController by lazy {
+        app.morsecode.android.core.webshare.WebShareController(
+            context = appContext,
+            library = mediaLibrary,
+            destinations = destinations,
+            logStore = logStore,
+        ).also { controller ->
+            controller.onConsentNeeded = { session ->
+                consentRequests.ask(
+                    app.morsecode.android.core.network.ConsentRequests.Request(
+                        id = java.util.UUID.randomUUID().toString(),
+                        kind = app.morsecode.android.core.network.ConsentRequests.Kind.BROWSER,
+                        title = session.userAgent,
+                        // §6.16b: "Chrome · 192.168.1.88".
+                        detail = session.label,
+                        peerId = "web:${session.id}",
+                    ),
+                )
+            }
+        }
+    }
+
     /** §10 the broadcast engine: one queue fanned out to N peers. */
     val broadcastEngine: app.morsecode.android.core.transfer.BroadcastEngine by lazy {
         app.morsecode.android.core.transfer.BroadcastEngine(

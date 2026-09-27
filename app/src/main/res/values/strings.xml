@@ -173,6 +173,12 @@
     <string name="webshare_sessions_empty">No browser sessions</string>
     <string name="webshare_sessions_empty_action">Start WebShare</string>
     <string name="webshare_address_placeholder">Not running</string>
+    <string name="webshare_revoke">Revoke</string>
+    <string name="webshare_started">WebShare is running — open the address in a browser</string>
+    <string name="webshare_stopped">WebShare stopped</string>
+    <string name="webshare_failed">Port 33455 is in use — check the Connection Doctor</string>
+    <string name="webshare_copy_address">Copy the WebShare address</string>
+    <string name="webshare_address_copied">Address copied</string>
 
     <!-- ===== Files (§6.9) ===== -->
     <string name="files_tab_photos">Photos</string>
