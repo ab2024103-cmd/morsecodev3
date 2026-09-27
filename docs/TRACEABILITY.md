@@ -326,3 +326,89 @@ tabs open" is an executed result, not an assertion about source code.
    values are the prescribed ones.
 
 ---
+
+## Stage 4 — storage, permissions and the media library (§12, §3.5, §13)
+
+Scope built: §12.1 access method by content type, §12.2 graceful denial,
+§12.3 all-files access, §12.4 destinations, §12.5 MediaLibrary with the
+MediaStore date and pagination rules, §3.5 permission grouping, §13 tiering
+applied to page size / decode size / cache budget, §20.10 counts that return
+in milliseconds rather than minutes.
+
+Every category — PHOTOS · VIDEOS · MUSIC · DOCUMENTS · APPS · FILES (+ Ebooks,
+Archives, APKs, Large files) — is exposed behind one repository. No screen
+queries MediaStore.
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/model/Models.kt` | §8.1, §12.2, §12.5 | The shared vocabulary: `MediaItem` (whose `dateMillis` is *always* milliseconds), `FolderInfo`, `CategoryCount` with an explicit PENDING so §6.9's shimmer never shows a hard "0", `MediaPage`, `DirectoryEntry`, and `DirectoryListing` as a sealed type. |
+| `core/media/MediaLibrary.kt` | §12.5, §12.2, §20.10 | Counts, paging, folder panels, installed apps, directory listings. Every query goes through one `query()` that **asserts** INV-10 before touching the resolver, and `SecurityException` is a condition, not a crash. |
+| `core/media/MediaQueries.kt` | §12.5 INV-9, INV-10 | The ordering expression verbatim from the spec, the LIMIT/OFFSET detector, and the page-bounds maths. Isolated precisely so both invariants are testable without a device. |
+| `core/media/MediaDates.kt` | §12.5 DATE UNITS | `secondsToMillis` / `millisToSeconds` / `effectiveMillis` / day-start keys. Conversion happens once, at the cursor. |
+| `core/media/FileTypes.kt` | §4.9, §6.9 | MIME first, extension second; one classifier drives both the tile colour and the CATEGORIES row, so they cannot disagree. Large files is a size rule checked first. |
+| `core/media/ThumbnailCache.kt` | §6.9.2, §13 | Tier-scaled LRU keyed on `id:mtime:size`, `loadThumbnail` on 29+ and a measured `inSampleSize` decode below it, album art via `MediaMetadataRetriever`. A failed decode is logged, because a list of blanks means the loader is unwired. |
+| `core/storage/SafStore.kt` | §12.1 | `ACTION_OPEN_DOCUMENT_TREE`, `takePersistableUriPermission` at the moment of grant, and the grant list read back from `persistedUriPermissions` — a private copy would drift the moment the user revoked one in system settings. |
+| `core/storage/Destinations.kt` | §12.4, §12.5 | The single write target. Default `Download/Morsecode`, created on first receive; one accessor for the label, the "Open folder" intent, the MediaStore collection, the relative path and the `.morsecode.part` name. |
+| `core/util/Permissions.kt` | §3.5, §12.3, §14.1 | Request groups by task and API level. MANAGE_EXTERNAL_STORAGE is structurally absent from every group, battery exemption is not here at all, and CAMERA appears nowhere. |
+| `di/AppServices.kt` | §3.1, §8.2 | `mediaLibrary`, `thumbnails`, `safStore`, `destinations` — process-scoped, never screen-scoped. |
+| `app/src/test/.../{MediaDatesTest,MediaQueriesTest,FileTypesTest,ManifestPermissionsTest,StorageTest}.kt` | §21.1 | 26 new tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A7** (day groups once and in order; Android 14 paginates with no "Invalid token LIMIT"; received files carry correct DATE_TAKEN units) | **BLOCKED** | The criterion is stated as an observation on a device and there is none here, so it cannot be PASS. All three of its mechanisms are executed, though: `MediaQueriesTest` asserts the INV-9 expression with its `_ID DESC` tiebreak and that **no** sort string for any key or direction contains LIMIT/OFFSET (plus a non-vacuity check that the detector really fires); `walkingEveryPageVisitsEveryRowExactlyOnce` proves pages tile the cursor with no gap or overlap, which is the property day headers depend on; `StorageTest.insertValuesCarryDateTakenInMillisecondsAndDateModifiedInSeconds` pins the units on the write side. Run 36298129160. |
+| **A16** (permission list matches §3.5 exactly; no stranger-link feature; no call leaves the local subnet) | **BLOCKED** | Clause 1 is **PASS, executed**: `ManifestPermissionsTest` asserts set equality in both directions against the §3.5 list, plus the absence of CAMERA and CHANGE_NETWORK_STATE, the three `maxSdkVersion` ceilings, `neverForLocation`, and that no hardware feature is required. Clause 2 is PASS via A19's gate. Clause 3 needs the proxy / airplane-mode test and is the reason the criterion as a whole is BLOCKED (§21.2, Stage 17). |
+| §12.1 access method by content type | **PASS, static** | Media goes through MediaStore collections (`Destinations.collectionFor`); general files and trees go through SAF + DocumentFile; nothing assumes a raw path is writable on 29+. Other apps' `/Android/data` is never claimed. |
+| §12.2 graceful denial | **PASS** | `DirectoryListing.AccessDenied` is a distinct type, returned both when `canRead()` is false and when `listFiles()` returns null — the exact case that used to render as an empty folder. `StorageTest.anUnreadableFolderIsNotAnEmptyFolder` asserts Ok / Missing / Ok-but-empty are three different answers. |
+| §12.3 all-files access never at first run | **PASS, structural** | MANAGE_EXTERNAL_STORAGE is in no request group; the only entry point is `allFilesAccessIntent`, documented as Settings-only and behind a rationale sheet. No onboarding code can reach it. |
+| §12.4 one destination, never two | **PASS** | `StorageTest.choosingATreeMovesEverythingToIt`: the label and the "Open folder" target both follow the single stored value. |
+| §12.5 one repository | **PASS** | `grep -rn "MediaStore" app/src/main/java --include=*.kt` matches only `core/media/` and `core/storage/`; no `feature/` file references it. |
+| §13 tiering scales work, never capability | **PASS** | `StorageTest.tieringScalesWorkAndNeverCapability`; every tier value is a size or a count, and none is a feature flag. |
+| §20.10 counts are indexed | **PASS, static** | Counts are `_ID` projections over indexed MediaStore queries; the Files-tab categories stop one row past the page rather than walking the volume. Measured timings need a device (Stage 17). |
+| A18 (lint gate green, unit tests green) | **PASS** | Gate `PASS — no findings` over 194 files; 51 tests, 0 failed. |
+
+### CI evidence
+
+Run **36298129160**, all 17 steps green.
+
+```
+- unit tests: 51 tests, 0 failed, 0 skipped - AccentTest (2), FileTypesTest (5), FmtTest (6),
+  IdsTest (7), ManifestPermissionsTest (4), MediaDatesTest (5), MediaQueriesTest (5),
+  PeerPaletteTest (3), ShellTest (7), StorageTest (7)
+- lint gate (§20.8): passed
+morsecode-1.0.0-debug.apk             5.6M
+morsecode-1.0.0-preview-unsigned.apk  1.3M
+```
+
+### Not yet done in this stage
+
+- No screen consumes the library yet. The Files tab still shows its Stage 3
+  empty states; wiring the grids, the selection basket, the address bar and
+  the sort sheet is Stage 10, and the permission prompts are requested
+  contextually there and in Stage 8.
+- Received-file insertion is prepared (`mediaValues`, `collectionFor`,
+  `relativePathFor`, `partNameFor`) but nothing writes yet — there is no
+  receive path until Stage 5.
+- `folders()` reads every row of a media table to group buckets. That is
+  acceptable for the panel counts §7.5 needs and is bounded by the media
+  tables, not the filesystem, but if it ever shows on the reference phone it
+  becomes a `GROUP BY` query. Noted rather than assumed away.
+- Trash, rename, move, copy, compress and properties (§6.9 long-press
+  toolbar) belong to the Files tab stage, not to the repository.
+
+### Deviations and resolved tensions
+
+9. **`DirectoryListing` is a sealed type rather than a nullable list.** §12.2
+   only requires the two conditions to be distinguishable; making it a type
+   means a screen *cannot* render a denied folder as empty even by accident,
+   which is what the rule is actually protecting.
+10. **The SAF hint for a denied path is the primary-storage tree root.** §12.2
+    asks for a button "scoped to that location", but the platform accepts only
+    a document tree URI and offers no documented path→tree mapping. The
+    closest legitimate starting point is used and the limitation is stated
+    here rather than papered over (§20.6).
+
+---
