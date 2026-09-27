@@ -948,3 +948,81 @@ is now pinned.
     continues.
 
 ---
+
+## Stage 12 — History, Settings, Logs, Doctor, Help (§6.12–6.15, §6.17, §16, §17)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/data/Prefs.kt` (extended) | §6.13 | Sounds, Notifications, Crash reports, Conflict policy and Broadcast peers (2–8, default 4) as flows. Each one names its reader in the comment, and the test asserts the reader exists. |
+| `core/transfer/SoundFx.kt` | §6.13 | The reader for "Sounds". It consults the preference on **every** cue rather than caching it, so turning the switch off takes effect on the next event. System tones, no bundled assets (§19.4). |
+| `core/logging/LogStore.kt` (extended) | §6.13, §16.6 | `crashCaptureEnabled` is checked before a report is written — the switch owns the behaviour. |
+| `core/transfer/TransferService.kt` (extended) | §6.13, §6.18 | With "Notifications · Transfer progress" off, the mandatory foreground notification stays but progress stops being published into it. |
+| `core/storage/Conflicts.kt` (extended) | §6.13, §9.5 | The batch policy's default is now settable, so changing the setting mid-session affects the next batch while an "apply to all" choice still wins for its own batch. |
+| `di/AppServices.kt` (extended) | §6.13, §10.2 | `conflictPolicyFromPrefs`, `applyConflictPolicy`, and `maxBroadcastPeers()` — the user's cap bounded by the tier (and by Nearby's 3 when relevant). |
+| `core/data/HistoryPresentation.kt` | §6.12 | Direction, search and status filters as arguments to ONE transformation, plus the day ladder and the "Ravi's Redmi · 131.1 MB · 15:13" meta line. |
+| `core/util/DoctorChecks.kt` | §6.15 | Facts in, verdicts out: the six specified checks plus Bluetooth, location, the hotspot warning and the three ports. Every check carries its glyph **and** its words. |
+| `feature/history/HistoryFragment.kt` | §6.12 | Segmented direction, search, status filter, day groups, and the overflow where Open / Share / Send again / Remove from history / Delete file are five distinct things. A missing file says "File no longer available". |
+| `feature/settings/SettingsFragment.kt` | §6.13, §12.3, §14.1 | Every row wired: the accent picker, Dark mode, Follow system, Sounds, Conflict policy, Notifications, Broadcast peers, Storage access (tree list, per-entry Remove, add, and the all-files rationale sheet), Battery exemption, Logs, Crash reports, Doctor, Replay onboarding, Help, About. |
+| `feature/settings/LogViewerFragment.kt` | §6.14, A26 | Monospace rows with the level in colour and in text, search, errors-only, clear, tail-following, and an Export that writes the .txt then raises the **system chooser** with the version header as the subject. |
+| `feature/settings/ConnectionDoctorFragment.kt` | §6.15 | Gathers Wi-Fi, peers, Play Services, permissions, battery, Bluetooth, location and port facts, then renders `DoctorChecks`. Each fix button goes to the screen that can actually fix it. |
+| `feature/help/HelpFragment.kt` | §6.17 | The five FAQ entries with the first expanded, then the eight troubleshooting articles — each ending in a real route. |
+| `app/src/test/.../DiagnosticsTest.kt` | §21.1 | 12 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A15** (the launcher icon is the Morsecode logo; crash capture and .txt export work and carry the version header) | **BLOCKED** | The icon half was PASS in Stage 1 (generated from the logo, all densities). The capture and export halves are now executed: `crashCaptureObeysTheSettingsSwitch` writes a report, finds it in `crashReports()` and sees "boom" in the exported text; `theExportedLogStartsWithTheVersionHeader` pins the first line as `Morsecode 1.0.0 (1)`. What is **not** executable here is the crash path firing from a real uncaught exception on a device, so the criterion as a whole stays BLOCKED. |
+| **A26** (Logs → [Export .txt] raises the system share sheet with the user's own apps; picking one hands over a readable .txt whose first line is "Morsecode 1.0.0 (1)") | **BLOCKED** | The chooser itself needs a device with apps installed. Both halves that can be executed are: the content is asserted verbatim (first line, whole ring buffer, crash reports appended), and the export path builds `ACTION_SEND` + `text/plain` + a FileProvider URI + `Intent.createChooser` with `Ids.logHeader(...)` as the subject — there is no toast-only branch in the code. |
+| §6.13 every switch is wired | **PASS** | `everySettingIsReadBySomething`: Sounds through `SoundFx.isEnabled`, Conflict policy through a real `Conflicts.decide` returning Overwrite, Broadcast peers clamped to 2–8, and Notifications / Crash reports persisting and publishing. `changingTheConflictSettingAffectsTheNextBatchNotThePreviousChoice` pins the interaction with "apply to all". |
+| §6.13 crash reports are local and optional | **PASS** | `crashCaptureObeysTheSettingsSwitch` — with the switch off, **nothing is written**. Nothing uploads anywhere (§17.1); there is no network call in `LogStore`. |
+| §6.12 one reactive stream | **PASS** | `directionSearchAndStatusAreOneStream`: direction, a name query, a peer query and a status filter all flow through `HistoryPresentation.apply`. |
+| §6.12 "Remove from history" ≠ "Delete file" | **PASS** | `removeFromHistoryAndDeleteFileAreDifferentThings`: the row goes, the file stays. |
+| §6.12 day groups | **PASS** | `historyGroupsByDayNewestFirst` (TODAY / YESTERDAY). |
+| §6.15 the six checks | **PASS** | `aHealthyPhonePassesEveryCheck`, `theSixSpecifiedChecksReadExactlyAsSpecified` (including "Nearby Connections may be slower", "Transfers may pause in background" and "✓ Request battery exemption" verbatim), `theHotspotCheckOnlyAppearsWhenTheHotspotIsOn`, `busyPortsAreNamed`. |
+| §4.13 status is never colour alone | **PASS** | `everyCheckSaysItsStatusInWordsNotOnlyInColour` — every check exposes a glyph and a spoken form containing its label. |
+| §6.17 every article ends in a real action | **PASS, static** | All eight articles route to the Doctor or to Settings; none raises a toast. |
+| §12.3 all-files access is explained and Settings-only | **PASS, static** | Reached only from Settings → Storage access, behind a rationale dialog, and absent from every permission group. |
+| A18 | **PASS** | Gate `PASS — no findings`, 242 files; **179 tests, 0 failed** in run 36318993904. |
+
+### CI evidence
+
+Run **36318993904**, all steps green: 179 tests, 0 failed, including
+`DiagnosticsTest (12)`. No failed runs in this stage.
+
+### Not yet done in this stage
+
+- **The profile card does not rename.** §6.13 says tapping it opens rename +
+  avatar-colour choice; the card renders the device name and the hint but the
+  editor is not built, and nothing else in the product reads a custom name yet.
+- The About row shows the version in its subtitle but has no licences screen.
+- History has no thumbnails: rows use the §4.9 type tile rather than a decoded
+  preview. §6.12 does not ask for one; §6.9.2 does, for the Files tab, and
+  that is where the loader is wired.
+- The Doctor's multicast check reports "held" optimistically rather than
+  querying the lock, because `Discovery` does not expose it yet; the honest
+  version needs a flag on the lock and lands with Stage 16's reliability pass.
+- The hotspot fact is always false until `HotspotController` exists (Stage 14),
+  so the STA/AP warning never fires yet. The check is written and tested.
+- "Replay onboarding" pushes the tour but does not reset the "seen" flag, so
+  the tour is shown without changing what first launch does. That matches
+  §6.13's wording ("Show the tour again") and is deliberate.
+
+### Deviations and resolved tensions
+
+31. **Sound cues are system tones, not bundled audio.** §6.13 names three cues
+    and §19.4 budgets ~6.5 MB for the release; three audio assets would buy
+    little and cost more than the tones do. The switch, which is what §6.13
+    actually legislates, is fully wired.
+32. **The Notifications switch governs progress, not the foreground
+    notification itself.** Android requires a foreground service to show one,
+    and §3.7 requires the service. The switch's own subtitle is "Transfer
+    progress", so that is exactly what it controls.
+33. **The Doctor gathers facts on a background thread and renders verdicts on
+    the main one.** Port probes and `WifiManager` reads are I/O; doing them
+    inline would make the "⟳ Refresh checks" button stutter, which §20.10
+    treats as a defect rather than an inherent cost.
+
+---
