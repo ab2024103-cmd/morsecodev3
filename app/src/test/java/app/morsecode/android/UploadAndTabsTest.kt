@@ -20,7 +20,16 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class UploadAndTabsTest {
 
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    /**
+     * Views resolve `?attr/...` against the theme they are built in, and in
+     * the product that theme is always one of §4.4's five accents applied by
+     * the activity. A bare application context is DeviceDefault, so the test
+     * has to supply what the app supplies.
+     */
+    private val context: android.content.Context = androidx.appcompat.view.ContextThemeWrapper(
+        ApplicationProvider.getApplicationContext(),
+        app.morsecode.android.R.style.Theme_Morsecode,
+    )
 
     // ----- §7.7 chunked-upload index math -----------------------------------
 
