@@ -1175,3 +1175,70 @@ session was expected.
     the server can hand over unchanged.
 
 ---
+
+## Stage 15 — WebShare player, uploads, push, mobile browser (§7.6–7.9, §11.4)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/webshare/PushOffers.kt` | §7.8 | The offer state machine — OFFERED → DOWNLOADING → DELIVERED, or DISMISSED / EXPIRED — holding the `CompletableDeferred` the engine's worker is waiting on. It decides whether the phone's row reads Completed, Cancelled or Failed. |
+| `core/network/WebPeerTransport.kt` | §11.4, §7.8, G11 | `WebPeerSession` implements the same `TransportSession` as LAN and Nearby, so every §9 rule already applies to a browser with no special-casing; `WebPeerTransport` publishes accepted sessions into the one discovery list with a WEB badge. |
+| `core/webshare/WebShareServer.kt` (extended) | §7.8 | SSE frames now carry this session's pending offers; `/api/push-accept`, `/api/push-dismiss` and a Range-capable `/push-download` that marks the offer delivered only when the whole file has gone out. |
+| `assets/web/app.js` (extended) | §7.6, §7.7, §7.8, A31 | In-place selection patching; the built-from-scratch video player; upload pause/resume/cancel with concurrency; offer cards in the same tray. |
+| `assets/web/styles.css` (extended) | §7.6, §7.9 | The 16:9 stage, and the under-768 px table collapse into two-line rows. |
+| `app/src/test/.../PushOffersTest.kt` | §21.1 | 8 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A31** (scroll a long list to the middle, tick an item: the view does not move) | **BLOCKED**, but the cause is now gone | This is the one criterion where the previous stage had a real defect: `toggle()` called `render()`, which rebuilt the page and reset `scrollTop`. Selection now patches only the affected tiles, checkboxes, group buttons and the bar — `patchSelection()` touches no container and inserts no nodes, and the bar is created once and updated in place. Measuring "the view does not move" still needs a browser. |
+| **A14** (chunked uploads pause and resume from the last received chunk, and report the real byte count written) | **BLOCKED** | A browser is needed. Both halves are implemented and visible: the loop checks a `paused` flag between chunks rather than aborting, resume asks `/api/upload-status` for `nextIndex` and continues from there, and the tray shows `result.bytes` — the server's count of what it actually wrote, which `WebShareServer.upload` computes from the bytes appended. |
+| **A20** (✕ stops audio within 200 ms, releases the element, the bar disappears; page changes do not resurrect it) | **BLOCKED** | Unchanged from Stage 14 and still correct: the `<audio>` lives on `state`, `closePlayer` pauses, drops `src`, calls `load()` and nulls it. |
+| **A32** (all four players share the seek contract) | **BLOCKED** | The fourth player now exists. `openVideo` builds §7.6's chrome itself: a draggable bar whose `oninput` suppresses the clock and updates the label, whose `onchange` commits by setting `currentTime`, ±10 s buttons clamped to `[0, duration]`, ← → stepping 5 s with Home/End, and a volume slider bound to `.volume`. The two native players were executed against `SeekContract` in Stage 11. |
+| **A13** (mobile browser: Files shows real names and type thumbnails; Photos/Videos show real gallery thumbnails with individual selection) | **BLOCKED** | §7.9's collapse is implemented as a two-line grid row that keeps the real file name, the size, the date and the leading cell; the galleries use the same tiles and the same per-item check target at every width. |
+| **A12** (…the in-browser video player streams with Range and is removed from the DOM on close) | **BLOCKED** | The player streams from `/stream` and the back button calls `pause()`, drops `src`, `load()`s and `remove()`s the element — §7.6's "a hidden `<video>` keeps playing audio" case cannot occur. |
+| §7.8 push, end to end | **PASS for the state machine** | `anAcceptedOfferCompletesTheSendWhenTheDownloadFinishes` (accepting is not delivering), `dismissIsCancelledNotFailed`, `anUnansweredOfferExpiresRatherThanHangingTheWorker` (INV-1 on this transport), `revokingASessionCancelsEverythingItWasOffered`, `stoppingWebShareCompletesEveryWaiter`, `offersAreNeverVisibleToAnotherSession`. |
+| §11.4 a browser is an ordinary peer | **PASS** | `anAcceptedBrowserBecomesAPeerAndALostOneStopsBeingOne` (a *pending* browser is not a peer) and `connectingToABrowserPeerYieldsASessionTheEngineCanDrive`. |
+| INV-6 exactly one upload progress UI | **PASS, structural** | One `#tray` element renders both uploads and offers; there is no second progress element in the site. |
+| A18 | **PASS** | Gate `PASS — no findings`, 252 files; **211 tests, 0 failed** in run 36324066122. No failed runs in this stage. |
+
+### CI evidence
+
+Run **36324066122**, all steps green: 211 tests, 0 failed, including
+`PushOffersTest (8)`.
+
+### Not yet done in this stage
+
+- **Nothing on the phone offers a push yet.** `WebPeerTransport.connect`
+  returns a session the engine can drive, but no screen lists browser peers as
+  send targets — Discovery renders whatever `Discovery.peers` holds, and
+  `webPeerTransport.publish(...)` is never called because the session list is
+  not observed. It is one collector, and it belongs with Stage 16's wiring
+  pass; until then §7.8 works from the server's side only.
+- The SSE endpoint answers one frame per connection and the browser reconnects
+  every two seconds. That is a poll wearing an SSE coat; a held stream needs a
+  chunked response NanoHTTPD will not close, which is Stage 16's work.
+- `/push-download` marks an offer delivered when a whole-file request
+  completes; a browser that downloads in ranges and stops halfway leaves the
+  offer DOWNLOADING until it expires. Honest, but coarse.
+- CC remains disabled in the browser player: there is no sidecar lookup over
+  HTTP yet (G13 allows the disabled state, so this is a gap in capability, not
+  in honesty).
+
+### Deviations and resolved tensions
+
+40. **Selection patches the DOM instead of re-rendering.** A31 is written as an
+    observation, but it is really an architectural constraint: any "re-render
+    on state change" design fails it. Recorded because the same trap exists on
+    the phone (Stage 9 solved it with keyed rows).
+41. **The browser player is hand-built rather than `<video controls>`.**
+    §7.6 prescribes chrome the native controls do not provide — a knob with
+    live labels, ±10 s, a volume slider, a CC button with an honest disabled
+    state — and A32 requires the same contract as the other three players.
+42. **An offer expires rather than waiting for ever.** §7.8 does not give a
+    timeout, but INV-1 forbids an unbounded wait, and an offer nobody answers
+    would otherwise hold an engine worker until the session died.
+
+---
