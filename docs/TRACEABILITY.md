@@ -652,3 +652,79 @@ Run **36303985533**, all steps green: 121 tests, 0 failed, including
     received" with "the next stream". §11.3 prescribes exactly that ordering.
 
 ---
+
+## Stage 8 — onboarding, Connect, Discovery, consent (§6.1, §6.2, §6.3, §6.16, §17.2)
+
+The stage where the transports meet a screen. It also closes the hole recorded
+at the end of Stages 6 and 7: both `consent` callbacks defaulted to accepting,
+and nothing could start a listener before they were installed.
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/network/ConsentRequests.kt` | §17.2, §6.16 | The process-wide gate. A transport calls `ask()` and **suspends inside it**, so there is no code path on which a listing, a thumbnail or a byte could cross before Accept. One request at a time, in order; trust is per live session and `endSession` forgets it. |
+| `core/network/ConnectionCoordinator.kt` | §8.2, §3.7, §11.1 | Owns discovery, both transports and the live session. `install()` wires consent and runs from `MorsecodeApp.onCreate`, **before** anything can listen. Discovery is reference-counted by the screens that need it, and binding a session starts the §3.7 service and remembers the device. |
+| `core/util/ConsentNotifications.kt` | §6.16 [GAP], §6.18 | The heads-up with Accept/Reject when the app is backgrounded. Its receiver answers the **same** broker the dialog answers — there is only one gate. |
+| `feature/onboarding/OnboardingFragment.kt` | §6.1 | Four swipeable slides over `ViewPager2`, squircle icons, dot indicator whose active dot is an accent pill, primary button plus text secondary. Slide 2 requests only discovery, media read and notifications; MANAGE_EXTERNAL_STORAGE and battery exemption are absent by construction. Skipping always works; slide 4's secondary replays the tour. |
+| `feature/dashboard/DashboardFragment.kt` | §6.2, §17.4 | The radar caption is live ("3 devices nearby" / "Scanning the local network"), RECENT DEVICES renders real entries with transport badges and a working Clear, and tapping one opens Discovery — recency shortens discovery, never consent. Discovery starts in `onStart` and stops in `onStop`. |
+| `feature/dashboard/DiscoveryFragment.kt` | §6.3, §11.1, §11.5, §6.19 | One unified list of every peer with avatar, mono subtitle, badge and [Connect]; the radar hides once peers exist so the list takes the space. TRANSPORT is a preference that never filters the list; QUEUE is live from the engine; [Manual IP] parses host / host:port / `morsecode://`; the 15-second empty state offers the Doctor; multi-select puts checkboxes on rows and exactly one [Broadcast to (n)] at the bottom. Permissions are requested here, contextually, and discovery starts either way. |
+| `MainActivity.kt` | §6.1, §6.16 | Opens the tour on first launch only; hosts the consent dialog while a screen is up and flips `uiVisible` so the notification takes over when it is not. |
+| `app/src/test/.../ConsentGateTest.kt`, `ShellTest.kt` | §21.1 | 8 new tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A28** (Connect → [Broadcast to several phones] lands on DISCOVERY in multi-select, not the sender; two phones opens the sender; picking one is refused) | **PASS for the routing and the refusal; BLOCKED for "opens the sender with both peers at 0 %"** | The dashboard's washed button, the Send long-press and the overflow all call `DiscoveryFragment.newInstance(multiSelect = true)`, whose purpose is BROADCAST — asserted in `ShellTest.purposeIsExplicitAndBroadcastDiscoveryIsMultiSelect`. In multi-select every row carries a checkbox and the bottom holds exactly one control; `startBroadcast()` refuses fewer than two with §6.3's message. The per-peer rows at 0 % need the broadcast engine (Stage 13). |
+| **A16** (permission list matches §3.5 exactly; no stranger-link feature; nothing leaves the local subnet) | **BLOCKED** | Clause 1 stays PASS, executed (`ManifestPermissionsTest`), and this stage adds the runtime half: the tour and Discovery request only `Permissions.nearby()`, `mediaRead()` and `notifications()`. Clause 2: `grep -rn "stranger\|relay\|temporary.link" app/src/main` → no matches, and §11.5's manual path is the only pairing route. Clause 3 still needs the proxy / airplane-mode test (Stage 17). |
+| **A5** (a browser opening the URL triggers the accept/reject popup; rejected gets nothing) | **BLOCKED** | There is no WebShare server until Stage 14. The dialog half exists and is wired: `ConsentDialog.forBrowser` is rendered from `ConsentRequests.Kind.BROWSER` by the same host, so Stage 14 only has to call `ask()`. |
+| §6.16 nothing crosses before Accept | **PASS** | `ConsentGateTest.theTransportWaitsUntilSomeoneAnswers`: the coroutine that would send is still suspended after the scheduler runs dry. Stage 6's `aRejectedConnectionYieldsNoSessionAndNoFiles` is the same rule over real sockets. |
+| §6.16 already-trusted peer in the same session is not re-prompted; a new peer always is | **PASS** | `anAlreadyTrustedPeerInTheSameSessionIsNotReprompted` and `trustDiesWithTheSession`. |
+| §6.16 [GAP] heads-up when backgrounded | **PASS, static** | `aBackgroundedRequestRaisesTheHeadsUpInstead` proves the broker routes to the notification path and that the action answers the same gate. The notification's appearance on a device is Stage 17. |
+| §6.1 onboarding shows once and is replayable | **PASS** | `ShellTest.onboardingShowsOnceAndIsReplayable`. |
+| §11.1 preference is not a filter | **PASS, static** | `showTransportSheet` sets `Discovery.preference` only; `render()` draws every peer the flow emits. |
+| §17.2 consent gates installed before any listener | **PASS** | `MorsecodeApp.onCreate` calls `connections.install()`; `addListener()` and `connect()` call it again defensively. The Stage 6/7 caveat is discharged. |
+| A18 | **PASS** | Gate `PASS — no findings`, 221 files; **129 tests, 0 failed** in run 36307479508. |
+
+### CI evidence
+
+Run **36307479508**, all steps green: 129 tests, 0 failed, including
+`ConsentGateTest (7)` and `ShellTest (8)`. Two earlier runs in this stage
+failed and are part of the record: **36307193423** (a missing import) and
+**36307316081** (two shell tests that assumed no tour on first launch — the
+behaviour was right and the fixtures were stale).
+
+### Not yet done in this stage
+
+- **The sender screen is still a stub.** Connecting navigates to
+  `TransferFragment`, which shows its empty state; the live rows, the queue
+  sheet and the notification are Stage 9.
+- Broadcast multi-select collects the chosen peers but `BroadcastFragment`
+  does not receive them yet — the broadcast engine and its peer rows are
+  Stage 13.
+- The WebShare card's pill still shows OFF and opens the screen instead of
+  starting the server (Stage 14), which is the honest state (§20.6).
+- The dashboard's "Recent device → reconnect" opens Discovery rather than
+  dialling directly. Deliberate for now: §6.2 says recency shortens discovery
+  and must still pass through consent, and dialling straight from a stale
+  address would skip the rediscovery step §6.2 asks for.
+- Slide 2 requests permissions but does not explain a denial beyond the log;
+  the rationale sheets belong with §6.19's error states in Stage 12.
+
+### Deviations and resolved tensions
+
+20. **Consent is brokered, not owned by a screen.** §6.16 describes a dialog,
+    but a dialog that only exists while a fragment is alive would drop the
+    request when the phone rotates mid-handshake — and the transport would
+    hang. The broker holds the question; the dialog and the notification are
+    two views of it.
+21. **The transport preference is applied on connect, not on display.**
+    §11.1's "Auto prefers LAN" is implemented in `Discovery.preferred`, which
+    the connect path consults, rather than by ordering or filtering the list.
+22. **Nearby peers are dialled through `NearbyTransport.connect`, which does
+    not suspend until the connection resolves** — the SDK answers through
+    `onConnectionResult`. Recorded in Stage 7 and still true; the screen shows
+    "Connecting to …" and the session arrives through the coordinator's bind.
+
+---
