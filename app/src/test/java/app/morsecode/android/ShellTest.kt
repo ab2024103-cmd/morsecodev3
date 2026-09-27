@@ -11,10 +11,13 @@ import app.morsecode.android.feature.dashboard.DiscoveryFragment
 import app.morsecode.android.feature.filemanager.FilesFragment
 import app.morsecode.android.feature.history.HistoryFragment
 import app.morsecode.android.feature.settings.SettingsFragment
+import app.morsecode.android.feature.onboarding.OnboardingFragment
 import app.morsecode.android.feature.transfer.TransferFragment
+import app.morsecode.android.di.AppServices
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -33,6 +36,16 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class ShellTest {
+
+    /**
+     * §6.1: first launch opens the tour. These tests are about the shell, so
+     * they start from the state a returning user is in; the tour itself is
+     * covered by [onboardingShowsOnceAndIsReplayable].
+     */
+    @Before
+    fun markTourSeen() {
+        AppServices.prefs.onboardingSeen = true
+    }
 
     private fun launch() = Robolectric.buildActivity(MainActivity::class.java).setup()
 
@@ -114,6 +127,31 @@ class ShellTest {
         assertEquals(Purpose.SENDER, Nav.purposeOf(single))
         assertEquals(Purpose.BROADCAST, Nav.purposeOf(multi))
         assertTrue(multi.requireArguments().getBoolean(Nav.ARG_MULTI_SELECT))
+    }
+
+    @Test
+    fun onboardingShowsOnceAndIsReplayable() {
+        // §6.1: four cards on first launch, and never again by itself.
+        AppServices.prefs.onboardingSeen = false
+        val first = launch().get()
+        first.supportFragmentManager.executePendingTransactions()
+        assertTrue(
+            "first launch must open the tour",
+            current(first) is OnboardingFragment,
+        )
+
+        AppServices.prefs.onboardingSeen = true
+        val second = launch().get()
+        second.supportFragmentManager.executePendingTransactions()
+        assertTrue(
+            "a returning user lands on Connect",
+            current(second) is DashboardFragment,
+        )
+
+        // Replayable at will (§6.13 → About → Replay onboarding).
+        second.push(OnboardingFragment())
+        second.supportFragmentManager.executePendingTransactions()
+        assertTrue(current(second) is OnboardingFragment)
     }
 
     @Test(expected = IllegalStateException::class)
