@@ -224,3 +224,105 @@ JDK or Android SDK and cannot reach any artifact host.
    spring rather than inherited.
 
 ---
+
+## Stage 3 — the navigation shell (§5)
+
+Scope built: §5.1 the four tabs, §5.2 every route on the navigation map,
+§5.3 Back / Minimize / End, §5.4 and §20.4 explicit purpose, §6.18 the four
+notification channels (created, not yet used), §6.19 an empty state on every
+list. Every destination renders its real chrome; none invents content.
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `MainActivity.kt` | §5.1, §5.2, §5.3, §8.1 | One activity, one back stack, `Navigator` implementation. Pushing records the launching tab so it stays lit; switching tab clears the pushed stack; back pops, then falls back to Connect, then finishes — which is what covers the post-crash relaunch state (§5.3). |
+| `res/layout/activity_main.xml` | §5.1 | Fragment host above a hairline above the four-tab nav. |
+| `core/ui/Nav.kt` | §5.4, §20.4 | `Purpose` (SENDER / RECEIVER / BROADCAST / RESUME), the argument keys, and `purposeOf` which **throws** rather than defaulting. A default would be an inference from incidental state. |
+| `core/ui/Screen.kt` | §5.2, §4.14, §6.19 | Base destination: toolbar, screen padding, the 640 dp content cap, the two shell facts (`navTab`, `hidesBottomNav`), and the shared `emptyState` helper so no list can ship blank. |
+| `core/ui/ScreenToolbar.kt` | §6.2, §6.9, §6.12, §15.1 | The one toolbar: optional back circle, title, trailing icon actions with descriptions and 48 dp targets. |
+| `core/ui/TabStripView.kt` | §6.9 | Five equal flex cells filling the width, 2 dp accent underline spanning its own cell, labels ellipsise before the strip does. Owns the tab index — there is deliberately no second copy. |
+| `core/ui/SegmentedControl.kt` | §6.12, §4.8 | The full-width [Received \| Sent] pill; the only place the full pill radius is used. |
+| `core/ui/SettingRowView.kt` | §6.13 | Label + subtitle + chevron **or** switch. No display-only mode: a switch cannot be constructed without a listener, because §6.13 calls a stored-but-unread preference a defect. |
+| `core/ui/Buttons.kt` | §4.4, §4.8, §6.2 | Accent, outlined and accent-wash buttons; all take text, so §4.13's no-icon-only rule holds by construction. |
+| `core/util/Notifications.kt` | §6.18 | The four channels — Transfers (low), Requests (high), WebShare (low), Playback (low) — created at process start from the `Ids` constants. Nothing posts to them yet. |
+| `feature/dashboard/DashboardFragment.kt` | §6.2 | "Connect" + ?, radar, [↑ Send] · [↓ Receive], the full-width washed "⇶ Broadcast to several phones" PRIMARY entry, the WebShare card with its OFF pill, "RECENT DEVICES" + Clear. Send, the Send long-press and Broadcast all land on Discovery (A28's route). |
+| `feature/dashboard/DiscoveryFragment.kt` | §6.3, §11.5 | Radar, mono TRANSPORT / QUEUE rows, "DISCOVERED" + Refresh, the 15-second empty state with [Open Connection Doctor] and [Try Nearby instead], and exactly one bottom control — [Manual IP], or [Broadcast to (n)] in multi-select. No QR anywhere (G12). |
+| `feature/transfer/TransferFragment.kt` | §6.4, §6.5, §5.2, §5.3 | Purpose-driven chrome, keeps the nav, Back = Minimize, End = confirm dialog with §5.3's exact copy. |
+| `feature/transfer/BroadcastFragment.kt` | §6.8.2, §5.2, §5.3 | Hub chrome with the totals card in place from the start and the same Minimize/keep-nav rules. |
+| `feature/filemanager/FilesFragment.kt` | §6.9, §6.19 | Toolbar + search · SORT · view toggle, exactly five tabs, the one-line tap hint, and a per-tab empty state rendered from the strip's index. |
+| `feature/history/HistoryFragment.kt` | §6.12 | Title + search · filter · clear-all, the direction pill, one render path for both directions. |
+| `feature/settings/SettingsFragment.kt` | §6.13, §4.4 | Profile card, the five-circle accent picker (live), Dark mode and Follow system (live, and Follow system disables/mirrors Dark mode per G3), then the remaining rows. |
+| `feature/settings/LogViewerFragment.kt`, `ConnectionDoctorFragment.kt` | §6.14, §6.15 | Both diagnostics routes with their chip row and footer buttons. |
+| `feature/help/HelpFragment.kt` | §6.17 | Help route; its "→ Connection Doctor" action is already real. |
+| `feature/webshare/WebShareFragment.kt` | §6.16b, §7.1 | Address, Start/Stop, SESSIONS with an empty state. No QR block. |
+| `feature/onboarding/OnboardingFragment.kt` | §6.1 | Route plus the replay entry point and the "seen" flag. |
+| `feature/viewer/MusicPlayerFragment.kt` | §5.2, §6.11 | Now-Playing **keeps** the nav — the documented non-exception. |
+| `feature/viewer/ImmersiveActivity.kt`, `ViewerActivity.kt`, `VideoPlayerActivity.kt` | §5.2 [CHANGED], §6.10, §8.1 | The two immersive surfaces as separate activities, so the absent bottom nav is structural rather than a flag a screen could forget. Backdrop and chrome are new theme attributes, so §4.13 still holds inside the viewer. |
+| `res/drawable/` (16 new icons) | §4.9 | back, close, search, sort, view-grid, overflow, trash, filter, refresh, folder, plus, logs, doctor, copy, wifi, arrow-up — same 24 dp / 2 dp outlined family. |
+| `res/values/strings.xml` | §3.8, Appendix A | +118 strings for these screens, all escaped and unique. |
+| `app/src/test/.../ShellTest.kt` | §21.1, §5.1–5.4 | Seven Robolectric tests over the real activity. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| §5.1 every tab opens without crashing (release blocker) | **PASS** | `ShellTest.everyTabOpensWithoutCrashing` drives the real `MainActivity` through all four tabs and asserts the expected fragment each time. Run 36296975670: 25 tests, 0 failed. |
+| §5.2 Transfer keeps the nav, launching tab stays lit | **PASS** | `ShellTest.transferKeepsTheBottomNavAndTheLaunchingTabStaysLit` pushes Transfer from the Files tab and asserts the nav is `VISIBLE` and Files is still the selected tab. |
+| §5.2 viewer and player hide the nav | **PASS, structural** | They are separate activities with no nav in their view tree; there is no code path that could show one. Visual confirmation is Stage 10/11. |
+| §5.3 Back falls back to popping the stack | **PASS** | `ShellTest.backPopsThePushedDestination` and `switchingTabsClearsThePushedStack`. |
+| §5.3 Back on a transfer = Minimize, End confirms | **PASS, static** | `TransferFragment` registers an `OnBackPressedCallback` that minimizes, and End raises the §5.3 dialog with its prescribed copy. "Session survives in the service" is unverifiable until the service exists (Stage 5). |
+| §5.4 / §20.4 explicit purpose | **PASS** | `purposeIsExplicitAndBroadcastDiscoveryIsMultiSelect` and `aDestinationWithoutAPurposeFailsLoudly` (expects `IllegalStateException`). |
+| §6.18 four channels created | **PASS, static** | `Notifications.createChannels` runs in `MorsecodeApp.onCreate` with the four `Ids` constants. Observing them in system settings needs a device (Stage 17). |
+| §6.19 every list has an empty state | **PASS** | Every list surface in this stage routes through `Screen.emptyState`, which requires an icon and a line; the dashboard, discovery, all five Files tabs, both History directions, WebShare sessions, logs and help each have one. |
+| A16 (no text style, colour or dimension outside the token files) | **PASS** | `python3 tools/lintgate.py` → `PASS — no findings`, 185 files, locally and as the first CI step. |
+| A11 (no hardcoded hex) | **PASS** | Same gate. The viewer's backdrop and chrome were added as theme attributes rather than literals for exactly this reason. |
+| A28 (Broadcast lands on Discovery in multi-select) | **PASS, route half** | Dashboard's Broadcast button and the Send long-press both open `DiscoveryFragment.newInstance(multiSelect = true)`, whose purpose is BROADCAST — asserted in `ShellTest`. The "picking two opens the sender at 0 %, picking one is refused" half is Stage 13. |
+| A35 (responsive 320–840 dp) | **BLOCKED** | The width buckets, the 640 dp content cap and the equal-flex tab strip exist, but nothing has been rendered or resized on a screen. Stage 17. |
+| A17 (accessibility) | **BLOCKED** | Every control added here carries a description and a 48 dp target, but TalkBack cannot be exercised in CI. Stage 16/17. |
+
+### CI evidence
+
+Run **36296975670**, all 17 steps green. Release notes on
+`ci-arena-01a0dfbc-morsecodev3`:
+
+```
+- unit tests: 25 tests, 0 failed, 0 skipped - AccentTest (2), FmtTest (6), IdsTest (7), PeerPaletteTest (3), ShellTest (7)
+- lint gate (§20.8): passed
+- signed with the stable upload key: false
+morsecode-1.0.0-debug.apk             5.6M
+morsecode-1.0.0-preview-unsigned.apk  1.3M
+```
+
+Robolectric is now in use: `ShellTest` runs the real `MainActivity`, so "the
+tabs open" is an executed result, not an assertion about source code.
+
+### Not yet done in this stage
+
+- `ACTION_SEND` / `ACTION_SEND_MULTIPLE` intake. The filters are declared and
+  Stage 1's note said Stage 3; it moves to **Stage 5**, because handing a
+  shared batch to a queue that does not exist would be theatre. Recorded here
+  rather than quietly dropped.
+- Per-tab back stacks. Switching tab clears the pushed stack — the simplest
+  behaviour that satisfies §5.1 and §5.2; nothing in the specification asks
+  for four parallel histories.
+- The Settings switches whose behaviour lands later (Sounds, Notifications,
+  Crash reports, Conflict policy, Broadcast peers, Storage access, Battery)
+  are rows, not toggles. §6.13 calls a stored-but-unread preference a defect,
+  so they become switches in the stage that reads them.
+- Onboarding does not yet gate first launch; the flag exists, the four slides
+  are Stage 8.
+
+### Deviations and resolved tensions
+
+7. **No `TextAppearance.Morsecode.TabLabel`.** §4.7 lists exactly ten text
+   appearances and a tab label is not among them, so the tab strip uses the
+   prescribed button label (14 sp medium, sentence case) rather than an
+   eleventh invented style.
+8. **Three new theme attributes for the immersive surfaces**
+   (`colorViewerBackdrop`, `colorViewerChrome`, `colorViewerChromeScrim`).
+   §6.10 prescribes black in dark and `#141310` in light; §4.13 forbids a
+   screen holding a hex. Attributes are the only way to satisfy both, and the
+   values are the prescribed ones.
+
+---
