@@ -58,7 +58,31 @@ jobs:
           fi
 
       - name: Unit tests (§21.1)
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee build.log
+
+      # Job logs are not readable with this token from outside the runner, so a
+      # failure has to leave its evidence somewhere the API returns (§22.1).
+      - name: Failure report
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ci-$(echo '${{ github.ref_name }}' | tr '/' '-')"
+          {
+            echo "**FAILED** run ${{ github.run_id }} at ${{ github.sha }}."
+            echo ""
+            python3 tools/failreport.py build.log
+          } > failure-notes.md
+          cat failure-notes.md
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --prerelease \
+              --title "Morsecode CI — ${{ github.ref_name }}" \
+              --notes-file failure-notes.md
+          else
+            gh release edit "$TAG" --notes-file failure-notes.md
+          fi
 
       # The build machine's artifacts are not reachable from the development
       # sandbox, so the test tally is carried in the release notes, which are
