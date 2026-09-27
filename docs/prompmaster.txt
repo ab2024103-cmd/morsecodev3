@@ -506,6 +506,17 @@ D12 Everything else the reference drafts got right — the transfer invariants,
         (dismissible one-time hint), ConsentDialog, BottomSheet.
 
 4.13 HARD UI RULES.
+     - AN ICON THAT CANNOT BE SEEN IS A BUG [CHANGED]. Every icon resolves its
+       colour from the surface it sits on, never from a global default:
+       immersive black surfaces (viewer, video player) use the on-black ramp
+       (#FFFFFF / #DDDDDD / #8A8A8A), cards use ?attr/t1..t3. Any icon-on-
+       surface pair below 3:1 contrast is a defect — that is what makes the
+       volume and info buttons disappear on the player's black background.
+       Tint through app:tint on AppCompatImageView / MaterialButton, never
+       android:tint on a drawable (it is a no-op below API 24), and never a
+       drawable whose stroke colour is baked in. Vectors load through
+       app:srcCompat. Verify every icon in BOTH themes on a screenshot from
+       §21.3, not by reading the XML.
      - Status is NEVER communicated by colour alone: every state has a chip with
        a word (QUEUED / SENDING / RECV / PAUSED / DONE / FAILED / SKIPPED) or an
        icon plus a label.
@@ -541,6 +552,29 @@ D12 Everything else the reference drafts got right — the transfer invariants,
          panel becomes a horizontal chip strip and low-value table columns
          (Modified) drop out on narrow viewports — a phone browser must be able
          to use the site (§7.5).
+
+4.16 IMAGE QUALITY — NOTHING MAY LOOK BLURRY [CHANGED]
+     A soft thumbnail or a soft full-screen photo is a decode bug, not a taste
+     question. Rules:
+       - Decode for the TARGET in pixels, not in dp: request at least
+         cellWidthPx (dp × density, so ~330 px for a 3-column grid on a 412 dp
+         xxhdpi phone), and never below it. inSampleSize rounds DOWN to the
+         next power of two — compute it from the real view size, never a
+         hard-coded 96 or 128.
+       - MediaStore.loadThumbnail / THUMBNAIL_KIND_MINI are 512×384 at best and
+         are FINE for a grid cell, and NEVER acceptable in the viewer.
+       - The viewer decodes the ORIGINAL through ImageDecoder (API 28+) or
+         BitmapRegionDecoder / BitmapFactory with a sample size derived from the
+         screen — full screen width at device density, then pinch-zoom re-decodes
+         the visible region. Upscaling the grid thumbnail into the viewer is the
+         single most common cause of "the opened photo is blurry"; it is banned.
+       - Cross-fade from the cached thumbnail to the full decode; the low-res
+         frame may be shown for at most ~150 ms, and must be replaced.
+       - ImageView uses centerCrop in grids, fitCenter in the viewer, and
+         android:adjustViewBounds where the aspect ratio matters. No layer-type
+         software, no bitmap scaled by the layout.
+       - Video posters follow the same rule via MediaMetadataRetriever at the
+         cell's pixel size.
 
 4.15 VISUAL FIDELITY PASS — "similar" is a defect [CHANGED]
      Building each screen from the prose alone converges on something that
@@ -666,6 +700,20 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      Radar + "Searching for devices" / "Look for peers on the same Wi-Fi network".
      Two mono info rows: TRANSPORT — "Wi-Fi LAN" (tap to change preference: Auto
      / Wi-Fi LAN / Nearby) · QUEUE — "3 files · 152 MB" (tap opens the queue).
+     THE TRANSPORT ROW MUST BE HONEST AND SELF-EXPLAINING [CHANGED]. It shows
+     the LIVE state of each transport, not the preference alone, as two chips:
+       LAN ●  "beacon 1200 ms · 192.168.1.24 · multicast lock held"
+       NEARBY ●  "advertising + discovering"
+     and when one is down it says WHY, in words a user can act on, e.g.
+     "LAN off — not connected to Wi-Fi", "LAN blocked — this network isolates
+     clients (AP isolation), try a hotspot", "multicast lock not held",
+     "Nearby unavailable — Play Services missing", "Nearby needs Location
+     permission" (with a [Grant] button), "Location services off" (with
+     [Turn on]). Tapping the row opens the Connection Doctor (§6.15).
+     If BOTH transports are down the screen must say so above the radar instead
+     of spinning forever: "Not searching — no transport is running", with the
+     fix button. A radar that animates while nothing is listening is a lie
+     (§20.6).
      "DISCOVERED" header with a "Refresh" action, then one UNIFIED list of every
      visible peer regardless of transport, each row = avatar, name, mono subtitle
      and a transport badge, with a [Connect] button:
@@ -920,6 +968,18 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      snackbar ("Queued IMG_2007.jpg · 2.4 MB → Ravi's Redmi"). With no session
      it opens Discovery first. A FAB that only raises a toast is a defect. Config-change safe; survives rotation with zoom
      state intact. The user must never need a third-party gallery.
+
+6.11.0 NO MEDIA FILE MAY CRASH THE APP [CHANGED]. Both players attach an error
+     listener before any file is opened, wrap open/prepare in a guard, and
+     treat failure as a normal state: a snackbar naming the reason
+     ("Can't play this file — unsupported format"), the row marked unplayable,
+     and auto-advance to the next item in the queue. Causes that must be
+     handled rather than thrown: unsupported codec, DRM, zero-length or
+     truncated file, a content:// URI whose permission was not persisted, a
+     path that no longer exists, and metadata with a null title/artist/duration
+     (never dereference them). ExoPlayer/Media3 is required (§3.3) precisely
+     because MediaPlayer's codec coverage on API 23 is where these crashes come
+     from. A stack trace from the music tab is a release blocker.
 
 6.11 MEDIA PLAYERS — "07 — music · video" / "03 — in-app playback"
      MUSIC (Now Playing): collapse chevron, "NOW PLAYING", overflow. Square
@@ -1268,6 +1328,27 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      Uses <video> against /stream with Range. Closing or navigating away must
      REMOVE the element from the DOM, not hide it — a hidden <video> keeps
      playing audio with nothing on screen to stop it.
+
+7.6a APPROVAL MUST REACH THE BROWSER [CHANGED]. The waiting page polls
+     /api/status (or holds the SSE stream) at most every 1 s, and the accept
+     tap on the phone flips that session's state so the browser advances within
+     ~1 s without a manual refresh. Failure modes that must be handled, because
+     they all present as "stuck on Waiting for approval":
+       - the browser is polling a DIFFERENT session id than the one the dialog
+         approved (one id, minted on first contact, echoed in every response);
+       - the token issued at approval is not attached to subsequent requests,
+         so the page 401s silently and keeps waiting;
+       - the poll is cached by the browser (send Cache-Control: no-store);
+       - the dialog approved while the server was restarting.
+     After ~20 s of waiting the page must say what it is waiting for and offer
+     [Retry] and the phone-side instruction, never spin forever.
+
+7.6b THE SITE'S ASSETS SHIP COMPLETE [CHANGED]. Broken-image placeholders,
+     missing glyphs or "two weird icons" in a toolbar mean an asset referenced
+     by the HTML is not in the APK. Every icon is an inline SVG or an asset
+     packaged under assets/webshare/; no icon font, no remote URL (§3.4). CI
+     asserts that every href/src/url() in the served HTML and CSS resolves to a
+     packaged file, and that loading each page produces ZERO 404s (§21.3).
 
 7.7  UPLOADS (browser → phone). Files are sliced client-side into 4 MB chunks
      and POSTed sequentially with a file id and chunk index, so pause means
@@ -1742,6 +1823,27 @@ D12 Everything else the reference drafts got right — the transfer invariants,
 16.6 Crash reports are captured by an uncaught-exception handler, stored
      locally, listed in the log viewer, and NEVER uploaded. The Settings switch
      controls local capture only; its subtitle says "Local · never uploaded".
+     GETTING THE REPORT OFF THE PHONE IS PART OF THE FEATURE [CHANGED]:
+       - The handler writes <cacheDir>/crashes/crash-<epoch>.txt containing the
+         §16.3 header (Morsecode <version> (<versionCode>)), device model,
+         Android level, the full stack trace and the last 200 log lines, then
+         lets the process die. Writing must survive the crash — flush and close
+         on the same thread, no coroutine, no handler post.
+       - On the NEXT launch, a dismissible banner appears on the Connect screen:
+         "Morsecode closed unexpectedly · [View report] [Share] [Dismiss]".
+         This is the only reliable path for a user whose app dies before
+         Settings can be reached.
+       - Settings → Logs gains a "Crash reports (n)" row → a list of reports,
+         newest first, each opening the text with a Share action; plus
+         [Share all] which zips them. Share uses ACTION_SEND with a
+         FileProvider URI (§6.14), so the report can go to WhatsApp, Gmail,
+         Drive or Files.
+       - The log viewer's export includes the most recent crash inline, so one
+         export is enough for a bug report.
+       - Fallback for a phone with no PC, documented in Help (§6.17): Settings →
+         About → tap the version 7× → "Copy diagnostics" puts the last crash on
+         the clipboard. The adb path (`adb logcat -d > crash.txt`) is developer
+         documentation, never the answer given to a user.
 
 --------------------------------------------------------------------------------
 17. SECURITY AND PRIVACY
@@ -1877,12 +1979,32 @@ D12 Everything else the reference drafts got right — the transfer invariants,
      - interactive views without contentDescription (or an explicit decorative
        marker); touch targets under 48 dp;
      - hardcoded hex colours in layouts/Kotlin outside the token file;
-     - user-visible string literals outside strings.xml.
+     - user-visible string literals outside strings.xml;
+     - [CHANGED] java.time / streams / Optional without core-library desugaring
+       enabled, and any API above minSdk without an SDK_INT guard or
+       @RequiresApi — the API-23 crash class;
+     - [CHANGED] android:tint on a drawable or ImageView (no-op below API 24)
+       and raw ImageView/Button in layouts where AppCompat* + app:srcCompat is
+       required;
+     - [CHANGED] MediaStore queries reachable from a screen without a
+       preceding permission check;
+     - [CHANGED] placeholder copy in the release variant: "not yet",
+       "coming soon", "TODO", "Unimplemented" (§20.10a);
+     - [CHANGED] an asset or drawable referenced by WebShare HTML/CSS that is
+       not packaged (§7.6b).
 
 20.9 KOTLIN/LANGUAGE CONSTRAINTS. No nested data class in an inner class body;
      at most one companion object; every coroutine extension explicitly
      imported; no NDK anywhere in the transfer engine (the bottleneck is I/O,
      not the JVM).
+
+20.10a NO PLACEHOLDER SCREENS IN A RELEASE [CHANGED]. "Not yet available",
+     "Coming soon", an empty Fragment or a TODO toast may exist on a working
+     branch and must NEVER be reachable in a build handed to anyone. A route
+     either works or is not navigable: hide the entry point, disable the
+     control with a reason, or finish the screen. The lint gate greps the
+     release variant for "not yet", "coming soon", "TODO" and "Unimplemented"
+     in user-visible strings and fails the build (§20.8).
 
 20.10 PERFORMANCE AS CORRECTNESS. Category counts that take minutes, a list that
      stutters at 10 000 items, a zip download that shows nothing for 30 s while
@@ -2080,6 +2202,29 @@ A35  Resize/rotate through 320 dp, 360 dp, 480 dp, 600 dp and 840 dp in both
      five tabs always span the full width, grids re-span instead of stretching,
      and selection/scroll/playback state survives every configuration change.
      The same sweep on the WebShare site in a phone browser.
+
+A36  Photos: grid thumbnails are sharp at the device's real density and the
+     opened photo is decoded from the ORIGINAL — zoom to 100 % and the detail
+     is there. No screen ever upscales a mini-thumbnail (§4.16).
+A37  Every icon in the photo viewer and the video player — back, overflow,
+     share, edit, delete, info, send, play, ±10 s, volume, CC — is visible
+     against the black surface in both themes, verified on a §21.3 screenshot,
+     at ≥ 3:1 contrast (§4.13).
+A38  Discovery states which transports are live and, when one is not, why, in
+     words with a fix button (Wi-Fi off, AP isolation, no multicast lock, no
+     Play Services, Location permission or services off). With both down, the
+     screen says "Not searching" instead of animating (§6.3).
+A39  Every file in the Music tab either plays or reports "Can't play this file"
+     and advances — 50 mixed files including a truncated one, a zero-byte one
+     and an exotic codec produce no crash (§6.11.0).
+A40  A forced crash writes a report; the next launch shows the banner; [Share]
+     hands a readable .txt to another app; Settings → Logs → Crash reports
+     lists it. Verified with no PC attached (§16.6).
+A41  A release build contains no reachable placeholder: navigating every entry
+     point in §5.2 reaches a working screen (§20.10a).
+A42  WebShare: approving on the phone advances the waiting browser within ~1 s
+     with no refresh; every page loads with zero 404s and no broken-image
+     glyphs; API 23 phone browser included (§7.6a, §7.6b).
 
 22.1 EVIDENCE CLASSES [CHANGED]. Every criterion in §22 is reported as one of:
      PASS (executed, with the command/output or the device and build), BLOCKED
