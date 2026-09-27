@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.view.Gravity
 import android.widget.LinearLayout
+import android.view.View
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.SwitchCompat
@@ -28,7 +29,10 @@ class SettingRowView @JvmOverloads constructor(
 
     private val labelView = AppCompatTextView(context)
     private val subtitleView = AppCompatTextView(context)
-    private val chevron = AppCompatImageView(context)
+    // §15.1: decorative — the row's own label and subtitle are the content.
+    private val chevron = AppCompatImageView(context).apply {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
     private val toggle = SwitchCompat(context)
 
     init {

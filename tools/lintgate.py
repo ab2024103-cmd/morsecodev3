@@ -181,6 +181,32 @@ def check_java8_guards() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Accessibility (§15.1): every icon carries a description or is declared
+#     decorative. An ImageView with neither is invisible to TalkBack, which
+#     §15 treats as a functional defect rather than a nicety.
+# ---------------------------------------------------------------------------
+IMAGE_VIEW_CREATION = re.compile(r"=\s*AppCompatImageView\(|=\s*ImageView\(")
+A11Y_SATISFIED = re.compile(
+    r"contentDescription|importantForAccessibility|IMPORTANT_FOR_ACCESSIBILITY_NO|A11y\."
+)
+
+
+def check_accessibility() -> None:
+    for path in walk(os.path.join(APP, "java"), (".kt",)):
+        text = strip_kotlin_comments(open(path, encoding="utf-8").read())
+        lines = text.splitlines()
+        for lineno, line in enumerate(lines, 1):
+            if not IMAGE_VIEW_CREATION.search(line):
+                continue
+            window = "\n".join(lines[lineno - 1:lineno + 24])
+            if A11Y_SATISFIED.search(window):
+                continue
+            fail(path, lineno,
+                 "an ImageView needs a contentDescription or an explicit "
+                 "importantForAccessibility=NO (§15.1)")
+
+
+# ---------------------------------------------------------------------------
 # 3. Kotlin language constraints (§20.9)
 # ---------------------------------------------------------------------------
 COROUTINE_IMPORTS = {
@@ -349,6 +375,7 @@ def main() -> int:
     defined = collect_defined_resources()
     check_resource_refs(defined)
     check_java8_guards()
+    check_accessibility()
     check_kotlin_constraints()
     check_layouts()
     check_kotlin_hex_and_strings()

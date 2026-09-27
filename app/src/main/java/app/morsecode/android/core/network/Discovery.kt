@@ -60,6 +60,13 @@ class Discovery(
     private var listenJob: Job? = null
     private var expiryJob: Job? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+
+    /**
+     * §6.15's multicast check reads this rather than assuming. Stage 12 had to
+     * report it optimistically because nothing exposed the lock; this closes
+     * that gap honestly (§20.6).
+     */
+    val isMulticastLockHeld: Boolean get() = multicastLock?.isHeld == true
     private var socket: DatagramSocket? = null
 
     fun start() {

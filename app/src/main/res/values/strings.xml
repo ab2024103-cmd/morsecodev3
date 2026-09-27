@@ -278,6 +278,12 @@
     <string name="logs_empty">No log entries yet</string>
     <string name="logs_search_hint">Search the log</string>
 
+    <!-- ===== Battery, power and OEM reliability (§14) ===== -->
+    <string name="battery_exemption_rationale">Android may pause background apps to save power, which can interrupt a transfer when the screen goes off. Allowing Morsecode to keep running fixes that. It is optional, and you can change it later in Settings.</string>
+    <string name="battery_not_now">Not now</string>
+    <string name="oem_autostart_title">Keep Morsecode running</string>
+    <string name="oem_autostart_intro">Some phones stop background apps on their own. If transfers die when the screen goes off, these are the settings to check.</string>
+
     <!-- ===== Connection Doctor (§6.15) ===== -->
     <string name="doctor_request_battery">✓ Request battery exemption</string>
     <string name="doctor_refresh">⟳ Refresh checks</string>

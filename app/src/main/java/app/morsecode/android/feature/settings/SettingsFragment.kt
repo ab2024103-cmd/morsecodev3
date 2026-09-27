@@ -144,6 +144,13 @@ class SettingsFragment : Screen() {
         ) { showStorageAccess() }
         column.addView(storageRow, params(0))
 
+        val autostart = SettingRowView(context)
+        autostart.bindAction(
+            getString(R.string.oem_autostart_title),
+            getString(R.string.oem_autostart_intro),
+        ) { showAutostartGuidance() }
+        column.addView(autostart, params(0))
+
         batteryRow = SettingRowView(context)
         batteryRow.bindAction(getString(R.string.settings_battery), batterySubtitle()) {
             requestBatteryExemption()
@@ -379,6 +386,21 @@ class SettingsFragment : Screen() {
                     runCatching { startActivity(it) }
                 }
             }
+            .show()
+    }
+
+    /**
+     * §14.2: concrete steps for Xiaomi, Huawei, Oppo, Vivo and Samsung,
+     * ordered with THIS phone's manufacturer first but always listing all of
+     * them — a Nokia owner still needs to see the list.
+     */
+    private fun showAutostartGuidance() {
+        val guidance = app.morsecode.android.core.util.PowerPolicy.autostartGuidance()
+        val body = guidance.joinToString("\n\n") { "${it.first}\n${it.second}" }
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.oem_autostart_title)
+            .setMessage(body)
+            .setPositiveButton(R.string.action_done, null)
             .show()
     }
 

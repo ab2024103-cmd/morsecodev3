@@ -120,6 +120,11 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_ONBOARDING_SEEN, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_SEEN, value).apply()
 
+    /** §14.1: the contextual battery prompt is offered once, then never again. */
+    var batteryPromptShown: Boolean
+        get() = prefs.getBoolean(KEY_BATTERY_PROMPT, false)
+        set(value) = prefs.edit().putBoolean(KEY_BATTERY_PROMPT, value).apply()
+
     /** §4.12g: one-time hints, dismissed for good once the user closes them. */
     fun isTipDismissed(id: String): Boolean = prefs.getBoolean(KEY_TIP_PREFIX + id, false)
 
@@ -146,6 +151,7 @@ class Prefs(context: Context) {
         private const val KEY_ACCENT = "accent"
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_TIP_PREFIX = "tip."
+        private const val KEY_BATTERY_PROMPT = "battery_prompt_shown"
         private const val KEY_SOUNDS = "sounds"
         private const val KEY_NOTIFICATIONS = "notifications"
         private const val KEY_CRASH_REPORTS = "crash_reports"

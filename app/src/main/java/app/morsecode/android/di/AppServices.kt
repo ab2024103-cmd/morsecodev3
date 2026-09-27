@@ -167,6 +167,11 @@ object AppServices {
         Conflicts.BatchPolicy(conflictPolicyFromPrefs())
     }
 
+    /** §14.5 wake and Wi-Fi locks, held only while a batch is active. */
+    val powerPolicy: app.morsecode.android.core.util.PowerPolicy by lazy {
+        app.morsecode.android.core.util.PowerPolicy(appContext, logStore)
+    }
+
     /** §6.13 "Sounds · Connect · fail · success" — the reader for that switch. */
     val soundFx: app.morsecode.android.core.transfer.SoundFx by lazy {
         app.morsecode.android.core.transfer.SoundFx(appContext, prefs)

@@ -145,8 +145,14 @@ class MediaGridAdapter(
         RecyclerView.ViewHolder(FrameLayout(context)) {
 
         private val root = itemView as FrameLayout
-        private val image = AppCompatImageView(context)
-        private val check = AppCompatImageView(context)
+        // §15.1: the thumbnail is decorative (the tile carries the name); the
+        // check is a real control and is labelled in bind().
+        private val image = AppCompatImageView(context).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        private val check = AppCompatImageView(context).apply {
+            contentDescription = context.getString(R.string.cd_select_item, "")
+        }
         private val duration = AppCompatTextView(context)
 
         /** §20.2: the token this holder is currently bound to. */
@@ -269,7 +275,9 @@ class MediaListAdapter(
         private val tile = TypeTileView(context)
         private val title = AppCompatTextView(context)
         private val meta = AppCompatTextView(context)
-        private val check = AppCompatImageView(context)
+        private val check = AppCompatImageView(context).apply {
+            contentDescription = context.getString(R.string.cd_select_item, "")
+        }
 
         init {
             root.orientation = LinearLayout.HORIZONTAL
@@ -385,8 +393,13 @@ class DirectoryAdapter(
     inner class EntryHolder(context: Context) : RecyclerView.ViewHolder(LinearLayout(context)) {
 
         private val root = itemView as LinearLayout
-        private val check = AppCompatImageView(context)
-        private val icon = AppCompatImageView(context)
+        private val check = AppCompatImageView(context).apply {
+            contentDescription = context.getString(R.string.cd_select_item, "")
+        }
+        // The type glyph repeats what the name already says (§15.1).
+        private val icon = AppCompatImageView(context).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
         private val title = AppCompatTextView(context)
         private val meta = AppCompatTextView(context)
 

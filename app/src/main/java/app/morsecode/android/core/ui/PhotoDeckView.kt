@@ -96,6 +96,10 @@ class PhotoDeckView(
     private fun slide(): AppCompatImageView {
         val view = AppCompatImageView(context)
         view.scaleType = ImageView.ScaleType.FIT_CENTER
+        // §15.1: the deck is decorative — the viewer's top bar carries the
+        // file name, the index and the size, and TalkBack should read that
+        // once rather than three unlabelled images.
+        view.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         return view
     }
 

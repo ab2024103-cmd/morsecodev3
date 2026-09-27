@@ -52,6 +52,9 @@ class WebShareServer(
 
     private val appContext = context.applicationContext
     private val assets = WebAssets(appContext)
+
+    /** §7.2: sized, server-cached thumbnails keyed on id + mtime. */
+    private val thumbnails = ThumbnailStore(appContext)
     private val uploads = ConcurrentHashMap<String, UploadState>()
 
     private class UploadState(val name: String, val target: File) {
@@ -261,9 +264,16 @@ class WebShareServer(
             ?: return badRequest("path required")
         val file = File(path)
         if (!file.exists()) return notFound()
-        // The browser gets the real file; sizing is the <img> element's job on
-        // a LAN this fast, and it keeps one code path for every image.
-        return streamFile(http, file, FileTypes.typeOf(file.name).name.lowercase())
+        // A sized, cached copy — a grid of 140 px tiles must not move the
+        // full-resolution originals (§7.2, §20.10).
+        val thumb = thumbnails.thumbnail(file)
+        return if (thumb != null) {
+            streamFile(http, thumb, "image/jpeg")
+        } else {
+            // No decode (a video, an unsupported format): the original is the
+            // honest answer, never a blank tile (§6.19).
+            streamFile(http, file, mimeOf(file))
+        }
     }
 
     /** §7.2: /download streams a file and MUST support Range (A32, §7.6). */

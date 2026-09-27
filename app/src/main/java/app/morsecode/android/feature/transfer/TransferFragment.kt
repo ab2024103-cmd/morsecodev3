@@ -121,6 +121,8 @@ class TransferFragment : Screen() {
 
         observe()
         offerResumeIfInterrupted()
+        offerBatteryExemptionOnce()
+        adviseIfBatteryLow()
     }
 
     // ----- State ------------------------------------------------------------
@@ -343,6 +345,57 @@ class TransferFragment : Screen() {
             }
             .setCancelable(false)
             .show()
+    }
+
+    // ----- §14 battery ------------------------------------------------------
+
+    /**
+     * §14.1: the exemption is offered contextually ONCE, the first time a
+     * transfer starts without it. Declining is respected — the flag is set
+     * either way, and the Doctor keeps surfacing it as a warning.
+     */
+    private fun offerBatteryExemptionOnce() {
+        if (AppServices.prefs.batteryPromptShown) return
+        if (isBatteryExempt()) return
+        AppServices.prefs.batteryPromptShown = true
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_battery)
+            .setMessage(R.string.battery_exemption_rationale)
+            .setNegativeButton(R.string.battery_not_now, null)
+            .setPositiveButton(R.string.doctor_request_battery) { _, _ ->
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:${requireContext().packageName}"),
+                )
+                runCatching { startActivity(intent) }
+            }
+            .show()
+    }
+
+    /** §14.4: advisory only, never a hard block. */
+    private fun adviseIfBatteryLow() {
+        val context = requireContext()
+        val status = context.registerReceiver(
+            null,
+            android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),
+        )
+        val level = status?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = status?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val percent = if (level < 0) 100 else (level * 100 / scale.coerceAtLeast(1))
+        val plugged = (status?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val saver = (context.getSystemService(android.content.Context.POWER_SERVICE)
+            as? android.os.PowerManager)?.isPowerSaveMode ?: false
+        val batch = AppServices.transferEngine.items.value.sumOf { it.totalBytes }
+
+        app.morsecode.android.core.util.PowerPolicy.lowBatteryAdvisory(percent, plugged, saver, batch)
+            ?.let { Ui.snackbar(requireActivity(), it) }
+    }
+
+    private fun isBatteryExempt(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 23) return true
+        val manager = requireContext().getSystemService(android.content.Context.POWER_SERVICE)
+            as? android.os.PowerManager ?: return false
+        return manager.isIgnoringBatteryOptimizations(requireContext().packageName)
     }
 
     // ----- §6.5 listening chrome -------------------------------------------

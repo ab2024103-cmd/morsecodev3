@@ -85,7 +85,8 @@ class ConnectionDoctorFragment : Screen() {
             wifiRssi = connection?.rssi,
             peersOnSubnet = peers.count { it.transport == app.morsecode.android.core.network.TransportKind.LAN },
             subnet = peers.firstOrNull()?.address?.substringBeforeLast('.')?.plus(".0/24"),
-            multicastLockHeld = AppServices.discovery.peers.value.isNotEmpty() || multicastLikely(),
+            // The real lock state, not a guess (§20.6).
+            multicastLockHeld = AppServices.discovery.isMulticastLockHeld,
             playServices = PlayServices.availability(context),
             missingPermissions = Permissions.missing(
                 context,
@@ -98,8 +99,6 @@ class ConnectionDoctorFragment : Screen() {
             busyPorts = busyPorts(),
         )
     }
-
-    private fun multicastLikely(): Boolean = true
 
     private fun isBatteryExempt(context: Context): Boolean {
         if (android.os.Build.VERSION.SDK_INT < 23) return true

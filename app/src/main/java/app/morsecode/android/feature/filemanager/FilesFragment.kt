@@ -211,13 +211,40 @@ class FilesFragment : Screen() {
         }
         list.adapter = gridAdapter
 
+        pagingCategory = category
+        pagingOffset = 0
+        pagingExhausted = false
+        lastItems = emptyList()
+        loadNextPage(emptyRes)
+
+        // §20.10: a 10 000-item folder must scroll, not stall — pages arrive
+        // as the list approaches its end rather than all at once.
+        list.clearOnScrollListeners()
+        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recycler: RecyclerView, dx: Int, dy: Int) {
+                if (dy <= 0 || pagingExhausted || loadingPage) return
+                val manager = recycler.layoutManager as? GridLayoutManager ?: return
+                val lastVisible = manager.findLastVisibleItemPosition()
+                if (lastVisible >= manager.itemCount - PAGE_TRIGGER) loadNextPage(emptyRes)
+            }
+        })
+    }
+
+    /** One page at the tier's size, appended in place (INV-11, §13). */
+    private fun loadNextPage(emptyRes: Int) {
+        val category = pagingCategory ?: return
+        if (loadingPage || pagingExhausted) return
+        loadingPage = true
         viewLifecycleOwner.lifecycleScope.launch {
-            val page = AppServices.mediaLibrary.page(category, order)
-            lastItems = SortRules.sortItems(page.items, order)
+            val page = AppServices.mediaLibrary.page(category, order, pagingOffset)
+            pagingOffset += page.items.size
+            pagingExhausted = !page.hasMore || page.items.isEmpty()
+            lastItems = SortRules.sortItems(lastItems + page.items, order)
             // §6.9.3: day headers appear exactly once, in order — the grouping
             // folds consecutive runs of the query's own ordering (A7).
             gridAdapter.submit(DayGroups.group(lastItems))
             showEmptyIfNeeded(lastItems.isEmpty(), emptyRes)
+            loadingPage = false
         }
     }
 
@@ -611,11 +638,18 @@ class FilesFragment : Screen() {
     private fun stub() = Ui.snackbar(requireActivity(), getString(R.string.stub_screen))
 
     private var askedForPermissions = false
+    private var pagingCategory: MediaCategory? = null
+    private var pagingOffset = 0
+    private var pagingExhausted = false
+    private var loadingPage = false
 
     private companion object {
         const val TIP_ID = "files.tap-to-open"
         const val FILES_TAB_INDEX = 4
         const val CATEGORY_PREFIX = "category://"
+
+        /** Rows from the end at which the next page is fetched. */
+        const val PAGE_TRIGGER = 12
         val CATEGORY_ROWS = listOf(
             MediaCategory.DOCUMENTS,
             MediaCategory.EBOOKS,
