@@ -1427,3 +1427,21 @@ Recorded honestly rather than left to be discovered:
 - `ThumbnailStore` has no eviction policy (Stage 16).
 
 ---
+
+### Addendum — the signing path, verified (§19.3, A18)
+
+The clause cannot be passed from this environment, so the machinery around it
+was made provable instead.
+
+| Check | Verdict | Evidence |
+| --- | --- | --- |
+| An agent here could set the secrets itself | **No** | `gh api repos/.../actions/secrets` → `403: Resource not accessible by integration`. Recorded rather than worked around. |
+| CI signs when the secrets exist | **PASS, static** | The workflow installs the key, Gradle's `upload` signing config is selected, and the artifact is renamed `-release` instead of `-preview-unsigned`. |
+| Bad key material fails early and legibly | **PASS, static** | `keytool -list` runs against the decoded keystore before the build; a mistyped password names the secret to check instead of producing a Gradle stack trace. |
+| The signature is verified, not assumed | **PASS** | The build reads the certificate back with `apksigner --print-certs` and fails if `signed=true` yet the DN is the debug one. |
+| The guard is non-vacuous | **PASS** | Run 36336… publishes `signing certificate: C=US, O=Android, CN=Android Debug` — the exact string the guard matches. An earlier run printed `unknown`, which would have made the check useless; that bug was found and fixed by reading the evidence channel rather than trusting the step. |
+| The fingerprint is inspectable | **PASS** | Certificate subject and SHA-256 appear in the run summary and the release notes. |
+
+`tools/make-upload-key.sh` creates the one stable key on the owner's machine.
+It deliberately does not run in CI: §19.3's "throwaway keys FORBIDDEN" is
+exactly what a build-time `keytool -genkeypair` would produce.

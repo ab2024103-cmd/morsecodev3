@@ -61,3 +61,39 @@ Two things would finish it:
 2. **The device matrix (§21.2).** `docs/DEVICE_MATRIX.md` is the run sheet:
    sixteen cases on the reference MYA-L10 and a current phone, plus a laptop
    browser, each naming the criterion it settles.
+
+## Signing the release build (§19.3)
+
+CI signs automatically as soon as four repository secrets exist. It cannot
+create them, and neither can an agent working in this repo: the GitHub token
+available here is refused by the secrets API (`403: Resource not accessible by
+integration`), and §19.3 forbids a throwaway key in any case — a key minted by
+a build would be a new app identity on every run.
+
+One command, on your machine:
+
+```bash
+bash tools/make-upload-key.sh --set-secrets     # needs a JDK and gh
+```
+
+It creates `morsecode-upload.jks` (RSA 4096, 30 years), generates a random
+password, and sets `KEYSTORE_B64`, `KEY_ALIAS`, `KEY_PASSWORD` and
+`STORE_PASSWORD` on the repository. Without `--set-secrets` it writes the four
+values to `upload-key-secrets.txt` (mode 600) for pasting into
+**Settings → Secrets and variables → Actions** by hand.
+
+**Keep the `.jks` file.** It is the app's permanent identity: every future
+update must be signed with it, and there is no recovery if it is lost. It is
+git-ignored, and it must stay that way.
+
+The next push then produces `morsecode-1.0.0-release.apk` instead of
+`-preview-unsigned.apk`, and the build:
+
+- refuses to continue if the key material is unreadable, naming which secret
+  to check, rather than failing later inside Gradle;
+- **verifies the artifact** and fails if a "signed" release still carries the
+  debug certificate;
+- publishes the certificate subject and SHA-256 fingerprint in the run summary
+  and the release notes, so the signature is checkable from outside the runner.
+
+That closes A18's fourth clause with no code change.
