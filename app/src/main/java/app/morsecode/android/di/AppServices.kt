@@ -8,6 +8,13 @@ import java.io.File
 import app.morsecode.android.core.data.HistoryStore
 import app.morsecode.android.core.data.JournalStore
 import app.morsecode.android.core.data.Prefs
+import app.morsecode.android.core.data.RecentDevices
+import app.morsecode.android.core.network.Discovery
+import app.morsecode.android.core.network.LanTransport
+import app.morsecode.android.core.network.SessionRegistry
+import app.morsecode.android.core.storage.Conflicts
+import app.morsecode.android.core.storage.ReceiveSinkFactory
+import app.morsecode.android.core.transfer.IncomingFiles
 import app.morsecode.android.core.transfer.TransferEngine
 import app.morsecode.android.core.logging.LogStore
 import app.morsecode.android.core.media.MediaLibrary
@@ -15,6 +22,7 @@ import app.morsecode.android.core.media.ThumbnailCache
 import app.morsecode.android.core.storage.Destinations
 import app.morsecode.android.core.storage.SafStore
 import app.morsecode.android.core.util.DeviceTier
+import app.morsecode.android.core.util.Ids
 
 /**
  * Manual service locator (§3.1): no DI framework, no annotation processors.
@@ -69,6 +77,67 @@ object AppServices {
             scope = engineScope,
             journal = journalStore,
             history = historyStore,
+            logStore = logStore,
+        )
+    }
+
+    /** §17.4: a transport id and a name. Recency shortens discovery, never consent. */
+    val recentDevices: RecentDevices by lazy { RecentDevices(appContext) }
+
+    /** §8.1: one live session per peer; §6.16 reads it to avoid re-prompting. */
+    val sessionRegistry: SessionRegistry by lazy { SessionRegistry() }
+
+    /** §9.5 default policy is "Rename duplicates" (§6.13). */
+    val conflictPolicy: Conflicts.BatchPolicy by lazy {
+        Conflicts.BatchPolicy(Conflicts.Policy.RENAME)
+    }
+
+    val receiveSinks: ReceiveSinkFactory by lazy {
+        ReceiveSinkFactory(appContext, destinations, logStore)
+    }
+
+    /** §8.2: incoming files are owned here, never by a screen. */
+    val incomingFiles: IncomingFiles by lazy {
+        IncomingFiles(
+            engine = transferEngine,
+            sinks = receiveSinks,
+            conflictPolicy = conflictPolicy,
+            logStore = logStore,
+            verifyWithSha = deviceTier.verifyWithSha,
+        )
+    }
+
+    /** A stable per-install id; the peer sees it in HELLO and in every beacon. */
+    val deviceId: String by lazy {
+        val prefs = appContext.getSharedPreferences("morsecode.identity", Context.MODE_PRIVATE)
+        prefs.getString("deviceId", null) ?: java.util.UUID.randomUUID().toString().also {
+            prefs.edit().putString("deviceId", it).apply()
+        }
+    }
+
+    val deviceName: String get() = android.os.Build.MODEL ?: Ids.APP_NAME
+
+    /** §11.2 LAN transport: TCP :33456, one data connection per file. */
+    val lanTransport: LanTransport by lazy {
+        LanTransport(
+            scope = engineScope,
+            deviceId = deviceId,
+            deviceName = deviceName,
+            incoming = incomingFiles,
+            openContent = { item ->
+                runCatching { appContext.contentResolver.openInputStream(item.file.uri) }.getOrNull()
+            },
+            logStore = logStore,
+        )
+    }
+
+    /** §11.1 one discovery component, one deduplicated peer list. */
+    val discovery: Discovery by lazy {
+        Discovery(
+            context = appContext,
+            scope = engineScope,
+            deviceId = deviceId,
+            deviceName = deviceName,
             logStore = logStore,
         )
     }

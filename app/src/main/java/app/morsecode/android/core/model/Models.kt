@@ -227,3 +227,28 @@ sealed class SessionState {
     data class Connected(val peerId: String, val peerName: String) : SessionState()
     data class Closed(val peerId: String, val peerName: String, val reason: String) : SessionState()
 }
+
+// ---------------------------------------------------------------------------
+// §11.1 UNIFIED DISCOVERY — one deduplicated peer list, whatever found it.
+// ---------------------------------------------------------------------------
+
+/**
+ * One visible peer. §6.3 renders these in a single list regardless of
+ * transport, each with its badge and address; §11.1 forbids a hard transport
+ * switch that would hide half the network.
+ */
+data class DiscoveredPeer(
+    /** Transport-level id; also what recent devices store (§17.4). */
+    val deviceId: String,
+    val name: String,
+    /** LAN: "192.168.1.42". Nearby: the endpoint id. Web: the browser address. */
+    val address: String,
+    val port: Int,
+    val transport: app.morsecode.android.core.network.TransportKind,
+    val protocolVersion: Int,
+    /** §10: the peer announced that it is broadcasting. */
+    val broadcasting: Boolean = false,
+    val lastSeenMillis: Long = 0,
+) {
+    val hostPort: String get() = "$address:$port"
+}

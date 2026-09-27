@@ -145,6 +145,75 @@ class TransferEngine(
         return held
     }
 
+    // ----- Incoming files (§8.2: owned here, never by a screen) -------------
+
+    /**
+     * Registers a file the peer is about to send. It appears in the SAME queue
+     * as outgoing work, with direction RECEIVING, so §6.6's "In:" and "Out:"
+     * lines and the batch summary read from one list (§20.1).
+     */
+    fun registerIncoming(
+        batchId: String,
+        displayName: String,
+        sizeBytes: Long,
+        mime: String?,
+        relativePath: String?,
+        peerId: String,
+    ): TransferItem {
+        val item = TransferItem(
+            id = UUID.randomUUID().toString(),
+            batchId = batchId,
+            direction = Direction.RECEIVING,
+            state = TransferState.IN_PROGRESS,
+            file = TransferFile(
+                displayName = displayName,
+                uri = android.net.Uri.EMPTY,
+                mime = mime,
+                size = sizeBytes,
+            ),
+            relativePath = relativePath,
+            peerId = peerId,
+        )
+        queue.add(listOf(item), clock())
+        summarisedBatches.remove(batchId)
+        journalNow()
+        return item
+    }
+
+    fun incomingProgress(itemId: String, bytes: Long) {
+        queue.update(itemId) { it.copy(bytesTransferred = bytes) }
+    }
+
+    /**
+     * §9.6: the receiving side finishes through the SAME complete() path as
+     * the sending side. A receive that leaves no history row while the send
+     * side has one is the defect that rule exists to prevent.
+     */
+    fun incomingResult(
+        itemId: String,
+        state: TransferState,
+        peerName: String,
+        error: String? = null,
+        path: String? = null,
+    ) {
+        val item = queue.update(itemId) {
+            it.copy(
+                state = state,
+                bytesTransferred = if (state == TransferState.COMPLETED) it.totalBytes else it.bytesTransferred,
+                speedBps = 0,
+                lastError = error,
+            )
+        } ?: return
+        journalNow()
+        if (state.isTerminal && state != TransferState.CANCELLED) {
+            history?.record(item, peerName, path, clock())
+        }
+        if (state == TransferState.FAILED && error != null) {
+            emit(EngineEvent.ItemFailed(itemId, error))
+        }
+        scheduleBatchSummary(item.batchId)
+    }
+
     // ----- Session lifecycle ------------------------------------------------
 
     fun onSessionConnected(transportSession: TransportSession) {
