@@ -412,3 +412,96 @@ morsecode-1.0.0-preview-unsigned.apk  1.3M
     here rather than papered over (§20.6).
 
 ---
+
+## Stage 5 — the 1:1 transfer engine (§9)
+
+Headless, as the stage requires: no screen consumes any of this yet. It is
+driven by `TransferEngineTest` through a fake transport and, on a device, by a
+debug-only harness activity.
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/model/Models.kt` (extended) | §9.1, §9.3, §9.6, §20.3 | `TransferItem` field for field from §9.1, the seven states with `isTerminal`, `SendResult`, `BatchSummary`, `EngineEvent`, and `SessionState` as three cases so "never connected" is distinguishable from "was connected, now closed". |
+| `core/transfer/TransferQueue.kt` | §20.1, §9.2, §9.6 | The one source for the queue view, the notification and the batch summary. Owns `nextQueued`, the INV-3 pause/re-queue pair, `retryFailed`, and `summaryOf` — which reads the same items the rows rendered rather than recomputing. |
+| `core/transfer/TransferEngine.kt` | §9.2–9.7, §8.2, §3.6 | One worker per session; the bounded await; §9.3's retry table; §9.6's coalesced summary; §9.7's report/restore/discard triple; the held ACTION_SEND batch. Timings are injected, so the tests drive the shipping code paths rather than a test-only branch. |
+| `core/transfer/TransferService.kt` | §3.7, §6.18 | The `dataSync` foreground service that owns sessions so minimising or rotating never interrupts a transfer, with §6.18's plain-words explanation as its text. |
+| `core/network/Transport.kt` | §8.2, §11.4 | `TransportSession` (one connected peer) and `Transport`. INV-1(a) is written into the contract: `close` must complete every pending waiter. |
+| `core/network/Framing.kt` | §11.2, §9.4 | The MRSC codec and `readHeaderLine` — the byte-by-byte header read A6 names. A CRC mismatch throws rather than being "repaired". |
+| `core/util/Integrity.kt` | §9.4 | Pre-hash limit, SHA-256, the size/hash verification rule, and the resume-offset and resume-sequence maths. |
+| `core/storage/Conflicts.kt` | §9.5 | All four policies, "already present", "keep both" naming, and a per-batch "apply to all" that cannot leak into the next batch. |
+| `core/storage/Destinations.kt` (extended) | §9.4 | `purgeOrphanParts`: orphan `.morsecode.part` files older than 24 h with no journal entry go; a journaled part is resumable work and stays. |
+| `core/data/JournalStore.kt` | §8.2, §9.7 | Written on every transition, replaced atomically, and restores IN_PROGRESS/QUEUED as PAUSED so nothing can come back mid-flight. |
+| `core/data/HistoryStore.kt` | §6.12, §9.6 | One `record()`, called by the engine's single completion path for both directions. |
+| `MainActivity.kt` | §3.6 | ACTION_SEND / ACTION_SEND_MULTIPLE describe their URIs through the media library, hold the batch on the engine and open Discovery. |
+| `app/src/debug/.../TransferHarnessActivity.kt` | stage requirement | Loopback transport at 2 MB/s in 256 KB steps that deliberately does **not** acknowledge pause or cancel, so the 3-second fallback is what a human exercises. Debug variant only. |
+| `app/src/test/.../{FakeSession,TransferEngineTest,TransferQueueTest,FramingTest,ConflictsTest,IntegrityTest}.kt` | §21.1 | 43 new tests. |
+| `.github/workflows/build.yml`, `tools/failreport.py` | §22.1 | On failure CI now writes the Kotlin errors and failing test cases into the release notes. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A6** (never fails with "chunk magic mismatch" — byte-by-byte header read present and covered by a unit test) | **PASS for the check the criterion names** | `FramingTest.theHeaderIsReadByteByByteAndLeavesTheFirstFrameIntact` reads a JSON header then the first MRSC frame off the same stream, and `aBufferedReaderWouldHaveSwallowedTheFirstFrame` *reproduces the production defect* — after a `BufferedReader.readLine()` the stream is empty and the frame is gone. Also covered: round-trip of 0/1/256 KB/odd-sized frames, CRC detection of a single flipped byte, magic mismatch on a one-byte slip, and the oversize-length guard. **No LAN bytes have moved yet** — the socket path is Stage 6 and the two-phone observation is Stage 17. |
+| **A2** (pause or cancel one file mid-transfer → the others complete; nothing stuck "Queued"; no restart) | **BLOCKED** | It is a two-phone observation and there is no transport yet. The engine half is executed: `cancellingOneInFlightFileLetsTheRestComplete` cancels a file whose transport never answers and asserts the other two COMPLETED and that **no item is left QUEUED**; `pausingOneFileLeavesItResumableAndTheOthersUntouched` asserts PAUSED with `resumeOffset` = bytes moved while the next file completes. Run 36299939101. |
+| **A3** (end a session mid-transfer, start a new one → the interrupted file resumes automatically; new sends start at once) | **BLOCKED** | Same reason. Engine half executed: `losingASessionPausesEverythingAndFailsNothing` (all PAUSED, none FAILED, offset kept, state becomes `Closed`) and `aNewSessionRequeuesAndFinishesTheInterruptedBatch` (a fresh session finishes the batch with no user action). `aDeliberatePauseSurvivesAReconnect` proves INV-3 re-queues what the *connection* paused, not what the *user* did. |
+| **A8** (ONE summary per batch, never one per file; SKIPPED separate from FAILED on both sides) | **BLOCKED** | The receiving side does not exist until Stage 6/9. Sender half executed: `aBatchCompletesAndProducesExactlyOneSummary` asserts exactly one `BatchCompleted` for three files, and `skippedIsReportedSeparatelyFromFailed` asserts `sent=1, skipped=1, failed=1` with three distinct item states. |
+| INV-1 never hang | **PASS** | All three guards are executed against a transport that never returns: `aTransportThatNeverAnswersIsBoundedByTheIdleWatchdog` (idle bound, then §9.3's retries, then FAILED, and the next file still completes), the cancel and pause tests (3-second terminal fallback), and the session-loss test (INV-1a). |
+| INV-2 pause/cancel never blocks others | **PASS** | The two tests above; the worker picks the next file on its next turn. |
+| INV-3 session restart unsticks everything | **PASS** | `losingASessionPausesEverythingAndFailsNothing` + `aNewSessionRequeuesAndFinishesTheInterruptedBatch` + `TransferQueueTest.requeueSkipsWhatTheUserPausedOnPurpose`. |
+| §9.3 retry policy | **PASS** | `aFlakyFileIsRetriedUpToThreeTimesAndThenSucceeds` (3 attempts, `retryCount` 2) and `aPermanentFailureStopsAfterExactlyThreeRetries` (4 attempts = first + 3 retries, one `ItemFailed`). A dead session pauses instead of failing. |
+| §9.5 conflict policy | **PASS** | `ConflictsTest`: all four policies, "already present" beating any policy, same-size-without-hashes being a conflict rather than a duplicate, `photo (1).jpg` → `photo (2).jpg`, extension preserved through `archive.tar.gz`, and "apply to all" scoped to one batch. |
+| §9.6 history through one path | **PASS** | `everyTerminalItemGoesThroughTheOneCompletePath`: completed, skipped and failed items all produce history rows with the right state and peer. |
+| §9.7 restart recovery | **PASS** | `anInterruptedBatchIsJournaledAndOfferedBackAsPaused`: the journal exists mid-transfer, a fresh engine reports the peer and the remaining count, **nothing is in the queue until the user answers**, restore brings items back PAUSED, discard clears. |
+| §9.4 orphan parts | **PASS** | `StorageTest.orphanPartFilesGoButResumableOnesStay`: >24 h orphan deleted, journaled part kept, fresh part kept, ordinary file untouched. |
+| §20.3 events vs state | **PASS** | `afreshEngineNeverAnnouncesAClosedConnection`: a loss with no prior session does not fabricate a `Closed` state. |
+| §3.6 shared items | **PASS** | `sharedItemsAreHeldUntilAPeerExists`; `MainActivity.handleShare` holds the batch and opens Discovery. |
+| A18 (gate green, tests green) | **PASS** | Gate `PASS — no findings`, 203 files; **95 tests, 0 failed** in run 36299939101. |
+
+### CI evidence
+
+Run **36299939101**, all steps green:
+
+```
+- unit tests: 95 tests, 0 failed, 0 skipped - AccentTest (2), ConflictsTest (8), FileTypesTest (5),
+  FmtTest (6), FramingTest (8), IdsTest (7), IntegrityTest (6), ManifestPermissionsTest (4),
+  MediaDatesTest (5), MediaQueriesTest (5), PeerPaletteTest (3), ShellTest (7), StorageTest (8),
+  TransferEngineTest (14), TransferQueueTest (7)
+```
+
+Two earlier runs in this stage failed and are part of the record: **36299667904**
+(12 failing tests) and **36299572155** (two Kotlin errors). Both were diagnosed
+from the new failure report, not from guesswork.
+
+### Not yet done in this stage
+
+- **The receiving side.** `TransportSession` has no incoming callbacks yet; §9.4's
+  `.part` write/verify/rename, §9.5's dialog and the receiver's "already
+  present" reply arrive with the LAN transport in Stage 6, where there is a
+  real byte stream to attach them to. `Conflicts` and `Integrity` are the
+  decision halves and are complete and tested.
+- **No UI.** The queue sheet, the transfer rows and the §9.6 summary card are
+  Stage 9; the §9.7 "Resume interrupted transfer?" dialog is Stage 9 too — the
+  engine only reports that there is something to ask about.
+- `SoundFx` (§8.1) is not written: §6.13's Sounds switch is the thing that
+  reads it, and a preference nobody reads is a defect.
+- The notification shows no peer, file or progress and has no actions; Stage 9
+  owns that, together with cancelling from the notification (§21.2 case 6).
+
+### Deviations and resolved tensions
+
+11. **A cancelled item is not written to history.** §9.6 requires both
+    directions through one `complete()` path, which is implemented; cancelling
+    is the user's own action and §6.12's history is a record of transfers, not
+    of abandoned ones. Completed, skipped and failed items are all recorded.
+12. **The engine's time constants are constructor parameters.** The defaults
+    are the specified values (3 retries, 800 ms, 3 s fallback, 2.5 s batch
+    window). Injecting them is what lets the tests exercise the shipping loop
+    instead of a test-only fast path.
+13. **Tests drive the engine with virtual time rather than `advanceUntilIdle()`.**
+    The first CI run of this suite showed `advanceUntilIdle()` leaving the
+    engine's background work unrun, so items sat QUEUED. Recorded because it
+    is a trap any later stage's tests could fall into.
+
+---
