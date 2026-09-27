@@ -143,8 +143,38 @@ class Destinations(
     /** The in-flight name a receive writes to (§9.4). */
     fun partNameFor(displayName: String): String = displayName + Ids.PART_SUFFIX
 
+    /**
+     * §9.4: orphan `.morsecode.part` files older than 24 h with NO journal
+     * entry are deleted at startup. A part file that still has a journal entry
+     * is a resumable transfer and must survive — deleting it would throw away
+     * the offsets §9.7 offers to resume from.
+     *
+     * @param journaledNames the part names the journal still knows about.
+     * @return how many orphans were removed.
+     */
+    fun purgeOrphanParts(
+        directory: File = defaultDirectory(),
+        journaledNames: Set<String> = emptySet(),
+        nowMillis: Long = System.currentTimeMillis(),
+        maxAgeMillis: Long = ORPHAN_MAX_AGE_MILLIS,
+    ): Int {
+        val children = directory.listFiles() ?: return 0
+        var removed = 0
+        for (child in children) {
+            if (!child.isFile || !child.name.endsWith(Ids.PART_SUFFIX)) continue
+            if (child.name in journaledNames) continue
+            if (nowMillis - child.lastModified() < maxAgeMillis) continue
+            if (child.delete()) {
+                removed++
+                logStore?.i("Removed orphan part ${child.name}")
+            }
+        }
+        return removed
+    }
+
     private companion object {
         const val KEY_TREE = "destination_tree"
+        const val ORPHAN_MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
         val DEFAULT_RELATIVE_PATH = Ids.DEFAULT_MEDIA_FOLDER
     }
 }

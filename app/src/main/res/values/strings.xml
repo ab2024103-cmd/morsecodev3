@@ -223,6 +223,16 @@
     <string name="channel_webshare">WebShare</string>
     <string name="channel_playback">Playback</string>
 
+    <!-- ===== Transfer notification (§6.18). Actions arrive with Stage 9. ===== -->
+    <string name="notification_transfer_title">Transfer running</string>
+    <string name="notification_transfer_explainer">This notification keeps the transfer alive. Dismissing it or force-stopping the app interrupts the transfer; it disappears on its own when the transfer ends.</string>
+
+    <!-- ===== Resume interrupted transfer (§9.7) ===== -->
+    <string name="resume_title">Resume interrupted transfer?</string>
+    <string name="resume_body">%1$s · %2$d item(s) left</string>
+    <string name="resume_confirm">Resume</string>
+    <string name="resume_discard">Discard</string>
+
     <!-- ===== Stubs: every route exists before its screen does (§5.1) ===== -->
     <string name="stub_screen">This screen arrives in a later stage</string>
 

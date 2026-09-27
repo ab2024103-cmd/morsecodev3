@@ -141,6 +141,15 @@
         </activity>
 
         <!--
+          §3.7: a foreground dataSync service owns every active session, so
+          minimising, rotating or navigating away never interrupts a transfer.
+        -->
+        <service
+            android:name=".core.transfer.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!--
           §5.2 [CHANGED] / §8.1: the photo viewer and the video player are
           immersive, full-bleed activities whose own action row owns the
           bottom edge. They are separate activities precisely so the bottom

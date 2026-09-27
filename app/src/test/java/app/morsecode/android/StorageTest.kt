@@ -130,6 +130,43 @@ class StorageTest {
     }
 
     @Test
+    fun orphanPartFilesGoButResumableOnesStay() {
+        val destinations = destinations()
+        val dir = File(context.cacheDir, "parts-test")
+        dir.mkdirs()
+        val now = 1_700_000_000_000L
+        val day = 24L * 60 * 60 * 1000
+
+        val orphan = File(dir, "old.mp4.morsecode.part")
+        orphan.writeText("x")
+        orphan.setLastModified(now - day - 1000)
+
+        val journaled = File(dir, "resumable.mp4.morsecode.part")
+        journaled.writeText("x")
+        journaled.setLastModified(now - day - 1000)
+
+        val fresh = File(dir, "new.mp4.morsecode.part")
+        fresh.writeText("x")
+        fresh.setLastModified(now - 1000)
+
+        val ordinary = File(dir, "keep.mp4")
+        ordinary.writeText("x")
+        ordinary.setLastModified(now - day - 1000)
+
+        val removed = destinations.purgeOrphanParts(
+            directory = dir,
+            journaledNames = setOf("resumable.mp4.morsecode.part"),
+            nowMillis = now,
+        )
+
+        assertEquals(1, removed)
+        assertTrue("an orphan older than 24 h goes", !orphan.exists())
+        assertTrue("a journaled part is resumable work, not an orphan", journaled.exists())
+        assertTrue("a part younger than 24 h stays", fresh.exists())
+        assertTrue("a real file is never touched", ordinary.exists())
+    }
+
+    @Test
     fun tieringScalesWorkAndNeverCapability() {
         val tier = DeviceTier(context)
         assertTrue(tier.pageSize > 0)

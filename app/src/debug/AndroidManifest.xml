@@ -18,5 +18,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Stage 5 harness: drives the transfer engine over a loopback session
+          so §9's pause / cancel / session-loss semantics can be exercised by
+          hand. Debug variant only.
+        -->
+        <activity
+            android:name=".feature.harness.TransferHarnessActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|uiMode"
+            android:exported="true"
+            android:label="@string/harness_label"
+            android:theme="@style/Theme.Morsecode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

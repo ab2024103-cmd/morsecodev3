@@ -8,6 +8,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import androidx.core.net.toUri
 import app.morsecode.android.core.model.CategoryCount
 import app.morsecode.android.core.model.DirectoryEntry
@@ -18,6 +19,7 @@ import app.morsecode.android.core.model.MediaCategory
 import app.morsecode.android.core.model.MediaItem
 import app.morsecode.android.core.model.MediaPage
 import app.morsecode.android.core.model.SortOrder
+import app.morsecode.android.core.model.TransferFile
 import app.morsecode.android.core.util.DeviceTier
 import app.morsecode.android.core.logging.LogStore
 import kotlinx.coroutines.Dispatchers
@@ -173,6 +175,39 @@ class MediaLibrary(
         val range = MediaQueries.pageBounds(all.size, offset, limit)
         val items = if (range.isEmpty()) emptyList() else all.subList(range.first, range.last + 1)
         return MediaPage(items, offset, offset + items.size < all.size)
+    }
+
+    // ----- Shared items (§3.6) ---------------------------------------------
+
+    /**
+     * Describes a URI handed to the app by ACTION_SEND / ACTION_SEND_MULTIPLE
+     * (§3.6). The destination is unresolved at this point: all the send flow
+     * needs is a name, a size and a MIME type, and those come from the
+     * provider that owns the URI — never from a guessed path.
+     */
+    fun describe(uri: Uri): TransferFile? {
+        val projection = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
+        var name: String? = null
+        var size = 0L
+        try {
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (nameColumn >= 0 && !cursor.isNull(nameColumn)) name = cursor.getString(nameColumn)
+                    if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) size = cursor.getLong(sizeColumn)
+                }
+            }
+        } catch (e: Exception) {
+            logStore?.w("Shared item could not be described: ${e.javaClass.simpleName}")
+        }
+        val displayName = name ?: uri.lastPathSegment ?: return null
+        return TransferFile(
+            displayName = displayName,
+            uri = uri,
+            mime = resolver.getType(uri),
+            size = size,
+        )
     }
 
     // ----- Directory browsing (§6.9 Files tab, §12.2) -----------------------

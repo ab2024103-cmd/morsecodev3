@@ -1,9 +1,12 @@
 package app.morsecode.android
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.IntentCompat
 import androidx.fragment.app.Fragment
 import app.morsecode.android.core.ui.BottomNavView
 import app.morsecode.android.core.ui.Nav
@@ -13,6 +16,7 @@ import app.morsecode.android.core.ui.Themes
 import app.morsecode.android.databinding.ActivityMainBinding
 import app.morsecode.android.di.AppServices
 import app.morsecode.android.feature.dashboard.DashboardFragment
+import app.morsecode.android.feature.dashboard.DiscoveryFragment
 import app.morsecode.android.feature.filemanager.FilesFragment
 import app.morsecode.android.feature.history.HistoryFragment
 import app.morsecode.android.feature.settings.SettingsFragment
@@ -47,6 +51,7 @@ class MainActivity : AppCompatActivity(), Navigator {
 
         if (savedInstanceState == null) {
             showRoot(BottomNavView.Tab.CONNECT)
+            handleShare(intent)
         }
 
         supportFragmentManager.addOnBackStackChangedListener { syncShell() }
@@ -63,6 +68,39 @@ class MainActivity : AppCompatActivity(), Navigator {
             }
         })
         syncShell()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShare(intent)
+    }
+
+    /**
+     * §3.6: shared items queue straight into the send flow with the
+     * destination unresolved. The batch is HELD by the engine and enqueued the
+     * moment a peer accepts (§6.9's rule for [Send] with no session), so the
+     * user lands on Discovery rather than on a screen with no peer.
+     */
+    private fun handleShare(intent: Intent?) {
+        val action = intent?.action ?: return
+        val uris: List<Uri> = when (action) {
+            Intent.ACTION_SEND ->
+                listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    ?.filterNotNull()
+                    .orEmpty()
+            else -> emptyList()
+        }
+        if (uris.isEmpty()) return
+
+        val files = uris.mapNotNull { AppServices.mediaLibrary.describe(it) }
+        if (files.isEmpty()) return
+
+        AppServices.transferEngine.holdShare(files)
+        AppServices.logStore.i("Received ${files.size} shared item(s) from another app")
+        push(DiscoveryFragment.newInstance(multiSelect = false))
     }
 
     // ----- Navigator (§5.2) -------------------------------------------------

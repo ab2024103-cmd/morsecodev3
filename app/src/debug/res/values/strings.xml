@@ -17,4 +17,5 @@
     <string name="gallery_tip">Tap a photo to open the viewer · tap its circle to select it</string>
     <string name="gallery_consent_peer">Show peer consent dialog</string>
     <string name="gallery_consent_browser">Show browser consent dialog</string>
+    <string name="harness_label">Morsecode transfer harness</string>
 </resources>

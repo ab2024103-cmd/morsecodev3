@@ -120,3 +120,110 @@ sealed class DirectoryListing {
 
     data class Missing(val path: String) : DirectoryListing()
 }
+
+// ---------------------------------------------------------------------------
+// §9 TRANSFER ENGINE — the item model and everything derived from it.
+// ---------------------------------------------------------------------------
+
+enum class Direction { SENDING, RECEIVING }
+
+/** §9.1 states. QUEUED → IN_PROGRESS → COMPLETED | SKIPPED | PAUSED | CANCELLED | FAILED. */
+enum class TransferState {
+    QUEUED,
+    IN_PROGRESS,
+    COMPLETED,
+    SKIPPED,
+    PAUSED,
+    CANCELLED,
+    FAILED;
+
+    /** A state the worker will never move on from by itself. */
+    val isTerminal: Boolean
+        get() = this == COMPLETED || this == SKIPPED || this == CANCELLED || this == FAILED
+
+    /** §9.6: these three are counted separately in the batch summary. */
+    val countsAsFailure: Boolean get() = this == FAILED
+}
+
+/** The file a queue item refers to, independent of how it is moved. */
+data class TransferFile(
+    val displayName: String,
+    val uri: Uri,
+    val mime: String?,
+    val size: Long,
+)
+
+/** §9.1 ITEM MODEL, field for field. */
+data class TransferItem(
+    val id: String,
+    val batchId: String,
+    val direction: Direction,
+    val state: TransferState,
+    val file: TransferFile,
+    /** Preserved folder structure, so AlbumA/img1.jpg never collides with AlbumB/img1.jpg (§9.5). */
+    val relativePath: String? = null,
+    val totalBytes: Long = file.size,
+    val bytesTransferred: Long = 0,
+    val speedBps: Long = 0,
+    val resumeOffset: Long = 0,
+    val retryCount: Int = 0,
+    val lastError: String? = null,
+    val peerId: String? = null,
+    /** Cached SHA-256 for files under PREHASH_LIMIT (§9.4). */
+    val sha256: String? = null,
+) {
+    val progress: Float
+        get() = if (totalBytes <= 0) 0f else (bytesTransferred.toFloat() / totalBytes).coerceIn(0f, 1f)
+
+    /** The path conflicts are evaluated against — full relative path (§9.5). */
+    val conflictKey: String get() = relativePath ?: file.displayName
+}
+
+/** §9.3 sendFile outcomes. */
+sealed class SendResult {
+    object Completed : SendResult()
+    data class SkippedAlreadyPresent(val reason: String) : SendResult()
+    object Paused : SendResult()
+    object Cancelled : SendResult()
+    data class Failed(val error: String) : SendResult()
+}
+
+/** §9.6 one coalesced summary per batch, derived from the queue — never recomputed. */
+data class BatchSummary(
+    val batchId: String,
+    val sent: Int,
+    val failed: Int,
+    val skipped: Int,
+    val totalBytes: Long,
+    val elapsedMillis: Long,
+) {
+    val averageSpeedBps: Long
+        get() = if (elapsedMillis <= 0) 0 else (totalBytes * 1000L) / elapsedMillis
+
+    /** [Retry failed] appears only when something actually failed (§9.6). */
+    val hasFailures: Boolean get() = failed > 0
+}
+
+/**
+ * §20.3 EVENTS vs STATE: one-shot signals, delivered once and consumed. State
+ * that a screen renders lives in the queue's flow instead.
+ */
+sealed class EngineEvent {
+    data class PeerConnected(val peerId: String, val peerName: String) : EngineEvent()
+    data class PeerDisconnected(val peerId: String, val reason: String) : EngineEvent()
+    data class ItemFailed(val itemId: String, val error: String) : EngineEvent()
+    data class BatchCompleted(val summary: BatchSummary) : EngineEvent()
+    data class ConflictRaised(val itemId: String, val conflictKey: String) : EngineEvent()
+    data class ResumeAvailable(val peerName: String, val remainingItems: Int) : EngineEvent()
+}
+
+/**
+ * §20.3: observable connection state must distinguish "never connected" from
+ * "was connected, now closed", so a fresh screen never announces
+ * "connection closed".
+ */
+sealed class SessionState {
+    object NeverConnected : SessionState()
+    data class Connected(val peerId: String, val peerName: String) : SessionState()
+    data class Closed(val peerId: String, val peerName: String, val reason: String) : SessionState()
+}

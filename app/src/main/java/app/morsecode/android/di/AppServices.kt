@@ -1,7 +1,14 @@
 package app.morsecode.android.di
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import java.io.File
+import app.morsecode.android.core.data.HistoryStore
+import app.morsecode.android.core.data.JournalStore
 import app.morsecode.android.core.data.Prefs
+import app.morsecode.android.core.transfer.TransferEngine
 import app.morsecode.android.core.logging.LogStore
 import app.morsecode.android.core.media.MediaLibrary
 import app.morsecode.android.core.media.ThumbnailCache
@@ -41,6 +48,30 @@ object AppServices {
 
     /** §12.4 the single write destination everything follows. */
     val destinations: Destinations by lazy { Destinations(appContext, logStore) }
+
+    /**
+     * §8.2: coordinators are process-scoped. The engine owns the queue and the
+     * session for the life of the process, never for the life of a screen.
+     */
+    val engineScope: CoroutineScope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+
+    /** §8.2 journal: written on every state transition (§9.7 recovery). */
+    val journalStore: JournalStore by lazy { JournalStore(File(appContext.filesDir, "journal.json")) }
+
+    /** §6.12 history, written by the engine's single complete() path (§9.6). */
+    val historyStore: HistoryStore by lazy { HistoryStore(File(appContext.filesDir, "history.json")) }
+
+    /** §9 the single source of truth for queue and session state. */
+    val transferEngine: TransferEngine by lazy {
+        TransferEngine(
+            scope = engineScope,
+            journal = journalStore,
+            history = historyStore,
+            logStore = logStore,
+        )
+    }
 
     fun init(context: Context) {
         appContext = context.applicationContext
