@@ -1026,3 +1026,77 @@ Run **36318993904**, all steps green: 179 tests, 0 failed, including
     treats as a defect rather than an inherent cost.
 
 ---
+
+## Stage 13 — broadcast, one sender to many receivers (§10, §6.8)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/model/Models.kt` (extended) | §10.1 | `PeerDelivery` field for field — including the per-(file, peer) `resumeOffsets` INV-B2 needs — and `PeerSessionState` (Pending → Accepted → Sending → Done, or Rejected / Lost). |
+| `core/transfer/BroadcastStats.kt` | §10.4, §10.6, §10.2 | The formulas as a pure object: PEERS, BATCH MB, TO SEND MB, MB SENT, throughput, deliveries, FILES EACH, average. Also INV-B4's header text, §10.6's shared-speed note and §10.2's cap note. |
+| `core/transfer/BroadcastEngine.kt` | §10.1–10.5 | One worker and one session per peer; per-peer bounded await; peer-scoped failure handling; the verified gate; one coalesced summary. |
+| `feature/transfer/BroadcastFragment.kt` | §6.8.2, §6.8.4 | Parent rows from the queue, indented sub-rows from each delivery with their own bars and a "–" while queued, the three running tiles, the completion header and tiles, greyed rows with a reason and [Retry peer], and §10.6's note. |
+| `feature/dashboard/DiscoveryFragment.kt` (extended) | §6.8.1, §10.2 | [Connect & broadcast to (n)], the cap with its honest reason, per-peer connect where a refusal marks only that peer, and the sender opening **after** peers accept. |
+| `app/src/test/.../BroadcastTest.kt` | §21.1 | 11 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A9** (3 phones: per-peer rows update independently, a rejecting or dropping peer never harms the others, "Broadcast complete / All 3 phones verified" only after every peer verified, tiles read 3 PEERS · 212 BATCH MB · 636 TO SEND MB then 3 PHONES · 3 FILES EACH · 636 MB SENT with 9 deliveries) | **BLOCKED** | Three physical phones cannot exist in CI. Every clause that is decidable is executed: `theTilesReadExactlyAsTheMocksDo` asserts the deck's own numbers — 3 PEERS, **212 MB** batch, **636 MB** to send, 9 deliveries, "14.2 MB/s" — and the completion tiles; `aRejectingPeerNeverHarmsTheOthers`, `aFailingPeerFailsOnlyItself` and `aHangingPeerNeverStallsTheFastOnes` cover INV-B1 and INV-B3 against a fake transport that rejects, fails and hangs; `theCompletionHeaderDegradesRatherThanLying` pins INV-B4 in both directions; `everyPeerGetsEveryFileAndOneSummaryCoversThemAll` pins INV-B5. Run 36320729171. |
+| **A28** (Connect → Broadcast lands on DISCOVERY in multi-select, not the sender; picking two and confirming opens the sender with both peers at 0 %; picking one is refused) | **BLOCKED**, and now complete in code | Stage 8 executed the routing and the refusal. This stage closes the second half: `startBroadcast` connects each chosen peer, marks refusals per peer, and pushes the sender only when at least one accepted — where every peer's sub-row starts at "–" until its first byte moves. The on-screen "both peers at 0 %" is Stage 17. |
+| §10.1 the queue and the deliveries are separate authorities | **PASS, structural** | The fragment reads `engine.items` for parent rows and `engine.deliveries` for sub-rows; there is no third structure, and `BroadcastStats` takes both as arguments rather than caching either. |
+| §10.2 fan-out and caps | **PASS** | One session and one worker per peer by construction; `theCapNoteNamesTheRealLimit` covers the Nearby-3 and low-tier-2 messages, and the cap itself comes from `AppServices.maxBroadcastPeers()`, which is the reader for §6.13's setting. |
+| INV-B1 peer isolation | **PASS** | Two tests above; a rejected peer is not even counted as a target (`aRejectedPeerIsNotCountedAsATarget`). |
+| INV-B2 per-peer resume | **PASS** | `perPeerResumeOffsetsAreTrackedSeparately` — each delivery carries its own offset map. |
+| INV-B3 no global hang | **PASS** | `aHangingPeerNeverStallsTheFastOnes`: the stuck peer is bounded by its own watchdog and the healthy peer still verifies. |
+| INV-B4 verify every peer | **PASS** | `theCompletionHeaderDegradesRatherThanLying` and `aFailingPeerFailsOnlyItself` (which asserts the degraded header). |
+| INV-B5 one summary | **PASS** | `everyPeerGetsEveryFileAndOneSummaryCoversThemAll`: exactly one `BatchCompleted` covering 6 deliveries. |
+| §10.6 honesty | **PASS** | `theHonestyNoteAppearsOnlyWhenTheSpeedIsReallyShared`, including that a single peer never gets the note. |
+| A18 | **PASS** | Gate `PASS — no findings`, 244 files; **190 tests, 0 failed** in run 36320729171. |
+
+### CI evidence
+
+Run **36320729171**, all steps green: 190 tests, 0 failed, including
+`BroadcastTest (11)`. One earlier run failed and is part of the record:
+**36320552633**, where I compared a summed byte count against `14.2 MB`
+exactly; three truncated peer speeds need not add up to the byte value of the
+rendered figure, and the mock specifies the *rendered* figure.
+
+### Not yet done in this stage
+
+- **§10.2's round-robin scheduling is not implemented.** Each peer worker reads
+  its own stream and runs concurrently, which is what INV-B1/B3 require, but
+  the spec also asks for round-robin chunk reads with a per-peer send window.
+  With one transport session per peer the OS scheduler is doing that work; if
+  a slow peer is shown to starve the others on real hardware, an explicit
+  window goes in. Recorded rather than claimed.
+- **§6.8.3's receiver-side badge is not wired.** `Protocol.hello` already
+  carries `broadcasting`, but `LanSession` does not expose it, so a receiver's
+  PeerCard still reads "Phone · LAN" rather than "Broadcast · Phone · LAN"
+  with the [FROM] badge. Everything else on the receiver is genuinely
+  identical to 1:1, as §10.5 requires.
+- The queue sheet does not expand rows into per-peer children (§6.7's last
+  line); the per-peer pause/cancel lives only on the sub-row for now.
+- §6.8.4's "Clear" on the delivered list currently leaves the screen rather
+  than emptying the list in place.
+
+### Deviations and resolved tensions
+
+34. **The broadcast has its own `TransferQueue`, separate from the 1:1
+    engine's.** §10.1 says a broadcast is ONE queue fanned out; sharing the
+    1:1 queue would mean a broadcast and a direct send could interleave in one
+    list, and §20.1's "one source for the queue view" would then have two
+    meanings on one screen.
+35. **The shared queue row shows the most advanced state any peer has reached.**
+    §10.1 makes the queue authoritative for the FILES, not for any peer's
+    progress, so a parent row reads SENDING while any peer is sending and DONE
+    only when every peer has finished — the per-peer truth is in the sub-rows,
+    where §6.8.2 puts it.
+36. **`markRejected` can create a delivery row for a peer that never
+    connected.** §6.8.1 requires a rejecting peer to be visible as a greyed row
+    with a reason, which means it has to exist in the list even though it has
+    no session.
+
+---
