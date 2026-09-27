@@ -728,3 +728,70 @@ behaviour was right and the fixtures were stale).
     "Connecting to …" and the session arrives through the coordinator's bind.
 
 ---
+
+## Stage 9 — transfer screens, queue sheet, notifications (§6.4–6.7, §6.18, §16.4)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/transfer/QueuePresentation.kt` | §6.4, §6.6, §6.7, §6.18, §16.5 | Every string the transfer surfaces show, derived from the queue's items: the mono row line, the live "1 sending · 1 queued · 1 paused — avg 6.2 MB/s" detail, §6.6's In:/Out: lines, §6.7's action set per state, the reorder rule, combined progress and the notification text. Pure, so all of it is tested. |
+| `core/transfer/TransferQueue.kt` (extended) | §6.7 | `move` (QUEUED only, and only among QUEUED rows), `sendNow`, `remove`, `clearCompleted`. |
+| `core/transfer/TransferNotifications.kt` | §6.18, §21.2 case 6 | Peer or "3 phones", current file, combined progress, Pause/Resume/Cancel — and the plain-words explanation the first time it appears. The actions call the engine's own `pause`/`resume`/`cancel`, so cancelling from the shade is the same operation as cancelling from the screen. |
+| `core/transfer/TransferService.kt` (extended) | §3.7, §6.18 | Collects the engine's items and re-posts the notification; every figure is read from that state (§16.5). |
+| `feature/transfer/TransferFragment.kt` | §6.4, §6.5, §6.6, §5.3, §9.7 | Live rows keyed by item id and updated **in place** (INV-11), a Receiving section that is always in the layout, §6.5's listening chrome behind the same purpose argument, §6.6's two-line terminal summary, and §9.7's Resume/Discard dialog — which asks, never decides. |
+| `feature/transfer/QueueSheet.kt` | §6.7 | Per-state buttons, a footer that shows only what applies, and long-press drag-reorder via `ItemTouchHelper` where non-queued rows are visibly disabled and a refused drop says so. |
+| `core/network/LanSession.kt`, `core/transfer/IncomingFiles.kt`, `core/network/ConnectionCoordinator.kt` | §16.4 | META sent, ACK received (with the resume offset), data connection opened, file start, file complete, pause/cancel requested, consent asked — each logged with a timestamp at the moment it happens. |
+| `app/src/test/.../QueuePresentationTest.kt` | §21.1 | 9 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A2** (pause or cancel one file → the others complete; nothing stuck "Queued") | **BLOCKED** | Still a two-phone observation. Both halves now exist end to end: the engine's behaviour is executed by `TransferEngineTest`, and this stage adds the surfaces that drive it — the row ✕, the queue sheet's per-item buttons and the notification's actions, all calling the same `engine.cancel(id)` / `engine.pause(id)`. `QueuePresentationTest.everyStateGetsTheActionSetTheMockShows` fixes those sets. |
+| **A3** (end a session mid-transfer, start a new one → the interrupted file resumes) | **BLOCKED** | Same reason. The UI half added here: End raises §5.3's dialog and calls `ConnectionCoordinator.endSession`, which closes cleanly and leaves the queue PAUSED; §9.7's dialog offers the journal back by name and count. |
+| **A8** (ONE summary per batch, never one per file; SKIPPED separate from FAILED on both sides) | **BLOCKED** | The receiving side of a real two-phone batch is Stage 17. Executed here: the screen renders exactly the engine's `BatchCompleted` event (one per batch, proved in Stage 5) and `aFinishedBatchInBothDirectionsShowsTwoLinesNeverOne` plus `skippedIsNeverFoldedIntoFailed` fix §6.6's copy. |
+| **A24** (picker → Send navigates to Transfer with both items visible, selection cleared, snackbar naming the peer) | **BLOCKED** | The picker does not exist until Stage 10. The destination half is ready: `TransferFragment` renders queued rows the moment they are enqueued, and `ActionBarView`'s Choose already routes to the Files tab. |
+| §6.4 rows, headers and summary copy | **PASS** | `rowMetaLinesMatchTheMockedCopy` reproduces all four mocked lines exactly ("48.9 / 144 MB · 6.2 MB/s", "4.1 MB · waiting", "39.7 / 64 MB · resume 39.7 MB", "144 MB · CRC verified"), and `theLiveSummaryCountsWhatIsActuallyInTheQueue` the summary detail. |
+| §6.4 the Receiving section is never conditionally removed | **PASS, static** | It is added to the layout in `onBuildScreen` and only ever re-bound; there is no code path that removes it. |
+| §6.6 [GAP] two lines, never one that mixes directions | **PASS** | `aFinishedBatchInBothDirectionsShowsTwoLinesNeverOne`, including the single-direction case producing one line rather than an empty "Out:". |
+| §6.7 action sets, footer and reorder | **PASS** | `everyStateGetsTheActionSetTheMockShows` (and that no state is left without an action), `onlyQueuedRowsReorderAndTheRefusalIsExplicit` — moving the in-flight row and dropping a queued row onto it are both refused — and `sendNowMovesToTheHeadOfTheQueuedRunAndRemoveClears`. |
+| §6.18 notification content | **PASS, static** | `theNotificationNamesThePeerTheFileAndTheCombinedProgress` and `combinedProgressCountsSkippedAsDoneAndIgnoresCancelled`. Its appearance and its actions on a device are Stage 17. |
+| §16.5 no screen computes progress | **PASS** | `grep -rn "bytesTransferred\|speedBps" app/src/main/java/app/morsecode/android/feature` → only `TransferFragment`'s read of `item.progress` for the bar; every number is formatted by `QueuePresentation` from the engine's items. |
+| INV-11 a state change moves nothing | **PASS, static** | `syncRows` updates existing views by id and adds or removes only when the set changes; the sheet sets `changeDuration = 0`. Measured on a device in Stage 17 (A31). |
+| §16.4 handshake logging | **PASS, static** | Seven new log points, each at its event. Reading them back in the log viewer is Stage 12. |
+| A18 | **PASS** | Gate `PASS — no findings`, 224 files; **138 tests, 0 failed** in run 36308671216. |
+
+### CI evidence
+
+Run **36308671216**, all steps green: 138 tests, 0 failed, including
+`QueuePresentationTest (9)`. One earlier run failed and is part of the record:
+**36308492248**, where my test fixtures used decimal MB while `Fmt` — correctly
+— uses binary.
+
+### Not yet done in this stage
+
+- **Broadcast rows.** §6.8.2's per-peer sub-rows and §10.4's stat tiles are
+  Stage 13; `BroadcastFragment` still shows its Stage 3 chrome.
+- The queue sheet does not yet expand rows into per-peer children (§6.7, last
+  line) for the same reason.
+- `Choose` opens the Files tab, but the picker cannot yet hand a selection
+  back — Stage 10 closes that loop, and A24 with it.
+- The notification's progress updates on every queue change; a long transfer
+  will post often. If that proves noisy on the reference phone it becomes a
+  throttle, but inventing one now would be guessing (§20.10 is about measured
+  behaviour, and there is nothing to measure yet).
+
+### Deviations and resolved tensions
+
+23. **"Pause all" is a loop over items, not a session-level flag.** INV-2 says
+    pausing affects only the item asked about; a global pause switch would be a
+    second source of truth for what is paused, and INV-3's re-queue would then
+    have to guess which items the user meant.
+24. **The row's ✕ cancels through the engine, and a terminal row has no ✕.**
+    §6.4 shows ✕ on every row; on a finished row it would either do nothing
+    (a silent no-op, §6.7 forbids those) or remove history, which is the queue
+    sheet's [Remove]. The ✕ is hidden once a row is terminal and [Remove]
+    lives in the sheet.
+
+---
