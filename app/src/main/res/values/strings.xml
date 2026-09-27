@@ -295,6 +295,30 @@
     <string name="nearby_pause_note">Pauses after the current file</string>
     <string name="nearby_unavailable">Nearby needs Play Services · Wi-Fi LAN only on this device</string>
 
+    <!-- ===== Media players (§6.11) ===== -->
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_next">Next</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_shuffle">Shuffle</string>
+    <string name="player_repeat">Repeat</string>
+    <string name="player_save">Save</string>
+    <string name="player_share">Share</string>
+    <string name="player_liked">Liked</string>
+    <string name="player_queue">Queue</string>
+    <string name="player_saved_toast">Saved to your playlist</string>
+    <string name="player_up_next">UP NEXT · %1$d SONGS</string>
+    <string name="player_up_next_empty">Nothing up next</string>
+    <string name="player_no_subtitles">No subtitles</string>
+    <string name="player_volume">Volume</string>
+    <string name="player_muted">Muted</string>
+    <string name="player_volume_level">Volume %1$d%%</string>
+    <string name="player_replay_ten">Back 10 seconds</string>
+    <string name="player_forward_ten">Forward 10 seconds</string>
+    <string name="player_video_meta">%1$s · %2$s</string>
+    <string name="cd_seek_bar">Playback position</string>
+    <string name="cd_artwork">Album art</string>
+
     <!-- ===== Transfer notification (§6.18). Actions arrive with Stage 9. ===== -->
     <string name="notification_transfer_title">Transfer running</string>
     <string name="notification_resume">Resume</string>

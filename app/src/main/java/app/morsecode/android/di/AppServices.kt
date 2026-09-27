@@ -59,6 +59,21 @@ object AppServices {
         app.morsecode.android.core.media.Selection()
     }
 
+    /** §6.11 the music queue, process-scoped so playback outlives the screen. */
+    val playbackQueue: app.morsecode.android.core.media.PlaybackQueue by lazy {
+        app.morsecode.android.core.media.PlaybackQueue()
+    }
+
+    /** §6.11 volume is a real control with mute-and-remember, not a toggle. */
+    val volumeControl: app.morsecode.android.core.media.VolumeControl by lazy {
+        app.morsecode.android.core.media.VolumeControl()
+    }
+
+    /** §6.11 liked / saved / resume positions — on-device only. */
+    val playbackPrefs: app.morsecode.android.core.data.PlaybackPrefs by lazy {
+        app.morsecode.android.core.data.PlaybackPrefs(appContext)
+    }
+
     /** §6.9.2 thumbnails, tier-scaled (§13). */
     val thumbnails: ThumbnailCache by lazy { ThumbnailCache(appContext, deviceTier, logStore) }
 

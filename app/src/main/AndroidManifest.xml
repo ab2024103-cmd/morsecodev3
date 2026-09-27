@@ -140,6 +140,15 @@
             </intent-filter>
         </activity>
 
+        <!--
+          §6.11: music runs in a MediaSession-backed foreground service so it
+          continues across tab changes, minimise and screen off.
+        -->
+        <service
+            android:name=".core.media.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <!-- §6.16 [GAP]: Accept/Reject from the heads-up notification. -->
         <receiver
             android:name=".core.util.ConsentNotifications$ConsentActionReceiver"

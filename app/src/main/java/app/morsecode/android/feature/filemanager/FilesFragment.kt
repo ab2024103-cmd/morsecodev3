@@ -513,6 +513,15 @@ class FilesFragment : Screen() {
         when (item.type) {
             FileType.VIDEO -> startActivity(Intent(requireContext(), VideoPlayerActivity::class.java))
             FileType.IMAGE -> startActivity(Intent(requireContext(), ViewerActivity::class.java))
+            FileType.AUDIO -> {
+                // §6.11: playback lives in the service, so it survives the tab
+                // change that opening Now-Playing causes (A23's music half).
+                val tracks = siblings.filter { it.type == FileType.AUDIO }
+                val start = tracks.indexOfFirst { it.uri == item.uri }.coerceAtLeast(0)
+                AppServices.playbackQueue.setQueue(tracks, start)
+                app.morsecode.android.core.media.PlaybackService.start(requireContext())
+                nav().push(app.morsecode.android.feature.viewer.MusicPlayerFragment())
+            }
             else -> openExternally(item)
         }
     }
