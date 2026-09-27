@@ -32,7 +32,9 @@ class FilesPresentationTest {
 
     private val utc = TimeZone.getTimeZone("UTC")
     private val day = 24L * 60 * 60 * 1000
-    private val now = 1_715_558_400_000L // 2024-05-13T00:00:00Z
+    // Midday, deliberately: a fixture at midnight makes "an hour ago"
+    // yesterday and turns a correct grouping into a failing test.
+    private val now = 1_715_601_600_000L // 2024-05-13T12:00:00Z
 
     private fun photo(id: Long, at: Long, name: String = "IMG_$id.jpg", size: Long = 1000) = MediaItem(
         id = id,
