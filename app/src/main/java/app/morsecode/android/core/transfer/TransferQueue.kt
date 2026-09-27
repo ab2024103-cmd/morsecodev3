@@ -133,6 +133,69 @@ class TransferQueue(private val onChanged: ((List<TransferItem>) -> Unit)? = nul
         return count
     }
 
+    /**
+     * §6.7 drag-reorder. Only a QUEUED item can move, and it can only land
+     * among QUEUED items: reordering an active or finished row is disabled in
+     * the UI and refused here, so it can never become a silent no-op.
+     *
+     * @return true when the queue actually changed.
+     */
+    fun move(itemId: String, targetIndex: Int): Boolean {
+        val moved = synchronized(lock) {
+            val item = byId[itemId] ?: return@synchronized false
+            if (item.state != TransferState.QUEUED) return@synchronized false
+            val from = order.indexOf(itemId)
+            if (from < 0) return@synchronized false
+            val bounded = targetIndex.coerceIn(0, order.size - 1)
+            val target = byId[order[bounded]]
+            if (target != null && target.state != TransferState.QUEUED) return@synchronized false
+            if (from == bounded) return@synchronized false
+            order.removeAt(from)
+            order.add(bounded, itemId)
+            true
+        }
+        if (moved) publish()
+        return moved
+    }
+
+    /** §6.7 [Send now]: move a queued item to the head of the queue. */
+    fun sendNow(itemId: String): Boolean {
+        val firstQueued = synchronized(lock) {
+            order.indexOfFirst { id -> byId[id]?.state == TransferState.QUEUED }
+        }
+        if (firstQueued < 0) return false
+        return move(itemId, firstQueued)
+    }
+
+    /** §6.7 [Remove] and [Clear completed]. */
+    fun remove(itemId: String): Boolean {
+        val removed = synchronized(lock) {
+            if (!byId.containsKey(itemId)) return@synchronized false
+            byId.remove(itemId)
+            order.remove(itemId)
+            true
+        }
+        if (removed) publish()
+        return removed
+    }
+
+    fun clearCompleted(): Int {
+        val cleared = synchronized(lock) {
+            val done = order.filter { id ->
+                val state = byId[id]?.state
+                state == TransferState.COMPLETED || state == TransferState.SKIPPED ||
+                    state == TransferState.CANCELLED
+            }
+            for (id in done) {
+                byId.remove(id)
+                order.remove(id)
+            }
+            done.size
+        }
+        if (cleared > 0) publish()
+        return cleared
+    }
+
     /** §9.6 [Retry failed]: only the failed items, and their retry count resets. */
     fun retryFailed(batchId: String): Int {
         var count = 0

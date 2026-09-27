@@ -262,7 +262,33 @@
 
     <!-- ===== Transfer notification (§6.18). Actions arrive with Stage 9. ===== -->
     <string name="notification_transfer_title">Transfer running</string>
+    <string name="notification_resume">Resume</string>
     <string name="notification_transfer_explainer">This notification keeps the transfer alive. Dismissing it or force-stopping the app interrupts the transfer; it disappears on its own when the transfer ends.</string>
+
+    <!-- ===== Transfer screens (§6.4–6.7) ===== -->
+    <string name="transfer_sending_header">Sending · %1$d files</string>
+    <string name="transfer_sending_header_one">Sending · 1 file</string>
+    <string name="transfer_receiving_header">Receiving · %1$d files</string>
+    <string name="transfer_receiving_header_one">Receiving · 1 file</string>
+    <string name="transfer_receiving_none">Nothing coming in yet</string>
+    <string name="transfer_pause_all">Pause all</string>
+    <string name="transfer_resume_all">Resume all</string>
+    <string name="transfer_peer_connected">%1$s · Connected · Phone · %2$s</string>
+    <string name="transfer_listening_title">Listening for senders</string>
+    <string name="transfer_listening_body">Keep this screen open. Anyone on your network can send files — you can queue files to send back too.</string>
+    <string name="transfer_row_broadcasting_as">BROADCASTING AS</string>
+    <string name="transfer_row_transport">TRANSPORT</string>
+    <string name="transfer_row_port">PORT</string>
+    <string name="queue_title">Queue · %1$d items</string>
+    <string name="queue_empty">Nothing in the queue</string>
+    <string name="queue_send_now">Send now</string>
+    <string name="queue_remove">Remove</string>
+    <string name="queue_resume">Resume</string>
+    <string name="queue_retry">Retry</string>
+    <string name="queue_clear_completed">Clear completed</string>
+    <string name="queue_retry_all_failed">Retry all failed</string>
+    <string name="queue_reorder_disabled">Only queued files can be reordered</string>
+    <string name="cd_reorder_item">Long press to reorder %1$s</string>
 
     <!-- ===== Resume interrupted transfer (§9.7) ===== -->
     <string name="resume_title">Resume interrupted transfer?</string>

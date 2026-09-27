@@ -96,6 +96,7 @@ class IncomingFiles(
             }
         }
 
+        logStore?.i("META received · $finalName · $size B · resume ${sink.existingLength()}")
         val item = engine.registerIncoming(
             batchId = batchId,
             displayName = finalName,
@@ -129,6 +130,7 @@ class IncomingFiles(
         }
 
         var written = offset
+        logStore?.i("File start · ${file.displayName} · from $offset")
         try {
             file.sink.openAppend().use { sink ->
                 while (written < file.size) {
@@ -151,6 +153,7 @@ class IncomingFiles(
             if (problem != null) throw IOException(problem)
 
             val location = file.sink.finish()
+            logStore?.i("File complete · ${file.displayName} · $written B")
             engine.incomingResult(file.itemId, TransferState.COMPLETED, file.peerName, path = location)
             Framing.writeHeaderLine(statusOut, Protocol.dataStatus(true))
         } catch (e: Exception) {

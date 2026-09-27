@@ -46,6 +46,7 @@ class ConnectionCoordinator(
         installed = true
 
         lan.consent = { hello ->
+            logStore?.i("Consent asked · peer=${hello.name} · ${hello.address}")
             consent.ask(
                 ConsentRequests.Request(
                     id = UUID.randomUUID().toString(),
@@ -61,6 +62,7 @@ class ConnectionCoordinator(
         lan.onVersionProblem = { message -> logStore?.w(message) }
 
         nearby.consent = { endpointId, name ->
+            logStore?.i("Consent asked · peer=$name · nearby/$endpointId")
             consent.ask(
                 ConsentRequests.Request(
                     id = UUID.randomUUID().toString(),

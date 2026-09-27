@@ -60,6 +60,7 @@ class LanSession(
         cancelledFiles.remove(item.id)
 
         // 1. META → ACK, as one atomic request on the control channel (§11.2).
+        logStore?.i("META sent · ${item.file.displayName} · ${item.totalBytes} B")
         val ack = try {
             control.request(
                 Protocol.meta(
@@ -91,6 +92,7 @@ class LanSession(
         // 2. The receiver reports its .part length; the sender seeks there and
         //    continues the seq numbering (§11.2 Resume).
         val offset = Integrity.resumeOffsetFor(ack.long("resumeOffset"), item.totalBytes)
+        logStore?.i("ACK received · ${item.file.displayName} · resumeOffset=$offset")
         var sent = offset
 
         val socket = try {
@@ -111,6 +113,7 @@ class LanSession(
                 Protocol.dataHeader(item.id, item.file.displayName, item.totalBytes, offset),
             )
 
+            logStore?.i("Data connection opened · ${item.file.displayName} → $host:$dataPort")
             val source = openContent(item)
                 ?: return@withContext SendResult.Failed("could not read ${item.file.displayName}")
 
@@ -145,6 +148,7 @@ class LanSession(
             //    header on a binary connection.
             val status = Protocol.parse(Framing.readHeaderLine(input))
             return@withContext if (status.bool("ok")) {
+                logStore?.i("File complete · ${item.file.displayName} · $sent B")
                 SendResult.Completed
             } else {
                 SendResult.Failed(status.string("error") ?: "receiver reported a failure")
@@ -162,11 +166,13 @@ class LanSession(
     }
 
     override suspend fun pauseOutgoing(fileId: String) {
+        logStore?.i("Pause requested · file=$fileId")
         pausedFiles.add(fileId)
         runCatching { control.send(Protocol.pauseRequest(fileId)) }
     }
 
     override suspend fun cancelTransfer(fileId: String) {
+        logStore?.i("Cancel requested · file=$fileId")
         cancelledFiles.add(fileId)
         runCatching { control.send(Protocol.cancel(fileId)) }
     }

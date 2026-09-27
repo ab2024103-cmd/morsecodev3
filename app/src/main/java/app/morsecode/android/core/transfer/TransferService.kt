@@ -1,17 +1,14 @@
 package app.morsecode.android.core.transfer
 
 import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import app.morsecode.android.MainActivity
-import app.morsecode.android.R
-import app.morsecode.android.core.util.Ids
+import app.morsecode.android.core.model.SessionState
 import app.morsecode.android.di.AppServices
+import kotlinx.coroutines.launch
 
 /**
  * §3.7: a foreground service (`dataSync`) owns every active session, so
@@ -30,20 +27,41 @@ class TransferService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var observer: kotlinx.coroutines.Job? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSelfSafely()
                 return START_NOT_STICKY
             }
-            else -> startForeground(NOTIFICATION_ID, buildNotification())
+            else -> {
+                startForeground(NOTIFICATION_ID, buildNotification())
+                observeQueue()
+            }
         }
         // The session lives in the engine; if the platform kills us, restarting
         // an empty service would claim a transfer that is not running.
         return START_NOT_STICKY
     }
 
+    /**
+     * §6.18: the notification follows the queue. §16.5: every figure in it is
+     * read from the engine's state, never from a counter kept here.
+     */
+    private fun observeQueue() {
+        if (observer?.isActive == true) return
+        observer = AppServices.engineScope.launch {
+            AppServices.transferEngine.items.collect {
+                val manager = getSystemService(NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                manager?.notify(NOTIFICATION_ID, buildNotification())
+            }
+        }
+    }
+
     override fun onDestroy() {
+        observer?.cancel()
+        observer = null
         // Ending the service is not ending the session: the engine decides
         // that, and only a real loss pauses the queue (INV-3).
         AppServices.logStore.i("Transfer service stopped")
@@ -61,34 +79,16 @@ class TransferService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val open = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            if (Build.VERSION.SDK_INT >= 23) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            },
+        val label = QueuePresentation.peerLabel(
+            peerName = (AppServices.transferEngine.session.value as? SessionState.Connected)?.peerName,
+            peerCount = AppServices.sessionRegistry.liveCount.value,
         )
-        return NotificationCompat.Builder(this, Ids.CHANNEL_TRANSFER)
-            .setSmallIcon(R.drawable.ic_send)
-            .setContentTitle(getString(R.string.notification_transfer_title))
-            .setContentText(getString(R.string.notification_transfer_explainer))
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText(getString(R.string.notification_transfer_explainer)),
-            )
-            .setContentIntent(open)
-            .setOngoing(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        return TransferNotifications.build(this, label)
     }
 
     companion object {
 
-        private const val NOTIFICATION_ID = 1001
+        private const val NOTIFICATION_ID = TransferNotifications.NOTIFICATION_ID
         private const val ACTION_STOP = "app.morsecode.android.action.STOP_TRANSFER_SERVICE"
 
         /** Called when a session starts, so the process outlives the screen. */
