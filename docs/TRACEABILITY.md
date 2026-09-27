@@ -795,3 +795,82 @@ Run **36308671216**, all steps green: 138 tests, 0 failed, including
     lives in the sheet.
 
 ---
+
+## Stage 10 — the Files tab and the photo viewer (§6.9, §6.10)
+
+### Files
+
+| File | Sections implemented | Notes |
+| --- | --- | --- |
+| `core/media/Selection.kt` | §20.1, §6.9 | The ONE canonical basket, shared by all five tabs, counting items and summing bytes. A folder is one entry at its recursive size. `takeAll()` is what [Send] uses, so the basket cannot survive a send. |
+| `core/media/DayGroups.kt` | §6.9, §6.9.3 | Folds the query's own order into consecutive day runs — it deliberately does **not** re-sort, because re-sorting would hide the ordering bug A7 exists to catch. Exposes `hasDuplicateDays` / `isDescending` so the property is assertable. |
+| `core/media/SortRules.kt` | §6.9, A34 | "Size · smallest first" echo text, item sorting with a stable tiebreak, and directory sorting where **folders always come first, whichever key is active**. |
+| `core/media/PathSegments.kt` | §6.9.1, A30 | Splits a path into jumpable segments, each carrying its absolute target; the root is itself a segment so the bar is never empty, and foreign volumes (SD, OTG) are handled whole. |
+| `core/media/ViewerSession.kt` | §6.10, §6.11 | The exact list the grid rendered, handed to the viewer — a re-query could produce a different order than the one on screen. |
+| `core/ui/DeckPhysics.kt` | §6.10, A33 | The ~22 % commit, the flick, the wrap and the "5 of 15" label as arithmetic, so the rule is testable without a screen. |
+| `core/ui/PhotoDeckView.kt` | §6.10 | Three live slides, 1:1 drag, 220 ms settle scaled by `DeviceTier`, pinch-zoom on the current photo, and vertical gestures deliberately not captured. |
+| `feature/filemanager/FilesAdapters.kt` | §6.9, §6.9.2, §20.2 | The day-grouped grid, the media/app rows and the directory rows. Every thumbnail load carries a **bind token** re-checked before the bitmap is applied; the video check sits top-left so it never covers the duration badge; a missing artist reads "Unknown artist". |
+| `feature/filemanager/FilesFragment.kt` | §6.9, §6.9.1, §12.2 | Tabs, the working sort control with its echo, the selection bar, the real category and folder listings with the address bar, and §12.2's "Access needed — Grant access" state. |
+| `feature/filemanager/SortSheet.kt` | §6.9 | Date modified · Name · Size · Type with the current key in the accent and a tick, plus Descending / Ascending, subtitle echoing the active order. |
+| `feature/viewer/ViewerActivity.kt` | §6.10, A33 | Full-bleed deck, page dots, the four neutral circles plus the accent SEND FAB that really queues and navigates, Edit hidden when no handler exists, and ← → for keyboards. |
+| `app/src/test/.../FilesPresentationTest.kt` | §21.1 | 15 tests. |
+
+### Criteria
+
+| Criterion | Verdict | Evidence |
+| --- | --- | --- |
+| **A7** (day groups appear once, in order) | **BLOCKED** (device), with both halves executed | Stage 4 proved the query side (INV-9 ordering, INV-10 paging, DATE_TAKEN units). This stage proves the render side: `dayGroupsAppearExactlyOnceAndInOrder` asserts three groups, no duplicate day and newest-first ordering, and `anOutOfOrderQueryIsNotSilentlyRepaired` pins that grouping does not paper over a bad query. |
+| **A23** (with nothing selected a tap opens; after one long-press a tap toggles on Photos, Videos, Music and Apps alike; the tick is visible on every item; Send shows count and bytes) | **BLOCKED** (device), logic executed | Every adapter implements the same three gestures against the one basket; `oneBasketIsSharedByEveryTabAndCountsItems` asserts a mixed photo + track + APK selection with its summed bytes. The gesture behaviour itself needs a finger. |
+| **A24** (picker → Send navigates to Transfer, rows visible, selection empty, snackbar names the peer) | **BLOCKED** (device), logic executed | `sendTakesTheBasketAndLeavesItEmpty`; `FilesFragment.sendSelection` enqueues, then navigates to `TransferFragment`, then snackbars "Queued 2 items · 43.6 GB → Ravi's Redmi". With no session it holds the batch and opens Discovery instead of failing. |
+| **A25** (a folder ticks as one item with its recursive size and sends as `<folder>.zip`) | **BLOCKED** | `aSelectedFolderIsOneItemWithItsRecursiveSize` covers the basket half, and the send names it `<folder>.zip`. **The zip is not built yet** — `ZipUtil` (§8.1) lands with WebShare's streamed archives in Stage 14, and until then a folder send would carry the name without the archive. Recorded rather than claimed. |
+| **A29** (tapping a thumbnail opens the viewer on THAT photo with name, index and size; tapping the circle selects instead) | **BLOCKED** (device), logic executed | `open()` publishes the rendered list and the tapped index to `ViewerSession`; the viewer's meta line is `DeckPhysics.positionLabel` + dimensions + `Fmt.size`. The check circle is a separate target with its own click listener. |
+| **A30** (Files shows an address bar; category and folder rows open real listings whose segments navigate; every row can be ticked) | **BLOCKED** (device), logic executed | `everyPathSegmentIsJumpable` and `theBarSurvivesTheRootAndForeignVolumes`; category rows open `renderCategoryListing`, folder rows a real `MediaLibrary.list`, and `DirectoryAdapter` gives folders the same check target as files. |
+| **A31** (scroll to the middle, tick an item, the view does not move) | **BLOCKED** (device), design in place | Selection toggles call `notifyItemChanged(position)`, never `notifyDataSetChanged`; `changeDuration = 0`; and `itemSortingHasAStableTiebreak` rules out a re-sort shuffling rows under the finger. Measuring it needs a screen. |
+| **A33** (the deck moves with the finger, commits past ~22 %, snaps back below it, dots follow, no ‹ › buttons, ← → on a keyboard, and the Send FAB queues that exact file) | **BLOCKED** (device), physics executed | `releasingPastTwentyTwoPercentCommits` covers the threshold, the flick and a flick against the drag; `theDeckWrapsAtBothEnds` the wrap and the single-photo case. No ‹ › chrome exists in `ViewerActivity`; `onKeyDown` handles ← →; `sendCurrent()` enqueues and leaves. |
+| **A34** (sort re-orders every tab, folders still first, the choice is echoed and survives tab switches) | **BLOCKED** (device), logic executed | `theSortEchoReadsAsTheMockDoes` (including "Size · smallest first" verbatim) and `sortingIsStableAndFoldersAlwaysComeFirst` across all four keys and both directions. The order is held by the fragment for the session and re-applied on every tab render. |
+| §12.2 an unreadable folder is never an empty one | **PASS** | `DirectoryListing.AccessDenied` renders the "Access needed to view this folder — Grant access" state wired to SAF; Stage 4's `anUnreadableFolderIsNotAnEmptyFolder` proves the three cases are distinct. |
+| §20.2 bind tokens | **PASS, static** | `MediaGridAdapter.TileHolder` stores the token before the load and re-checks it before `setImageBitmap`. |
+| §6.9 "Send" is navigation, not a toast | **PASS, static** | `sendSelection` has no toast path: it enqueues and navigates, or holds and opens Discovery. |
+| A18 | **PASS** | Gate `PASS — no findings`, 233 files; **153 tests, 0 failed** in run 36309636544. |
+
+### CI evidence
+
+Run **36309636544**, all steps green: 153 tests, 0 failed, including
+`FilesPresentationTest (15)`. One earlier run failed and is part of the record:
+**36309475421**, where my own fixture put "an hour ago" on the previous
+calendar day and failed a correct grouping.
+
+### Not yet done in this stage
+
+- **`<folder>.zip` is a name, not an archive yet** (A25, above). `ZipUtil`
+  arrives with Stage 14's streamed ZIP64.
+- Delete goes straight to `ContentResolver.delete`; §6.9's in-app Trash with
+  the Undo snackbar and auto-purge is not built.
+- The long-press action toolbar (Rename · Move · Copy · Compress · Properties)
+  and the overflow extras (Create folder · Extract · Hidden files · Grid/list ·
+  Search filters · Storage volume · Clipboard · Batch rename) are not built.
+  §6.9 lists them; they are file-manager surface rather than transfer surface,
+  and none of them is load-bearing for A7/A23–A34.
+- Search (the toolbar's magnifier) and the grid/list view toggle still stub.
+- Paging: the grid asks the library for one page at the tier's size. A folder
+  with 10 000 items will show the first page; the scroll-to-load-more wiring
+  is not in yet, which matters for §20.10 and is flagged for Stage 16.
+- The viewer loads the tier's thumbnail rather than a full-resolution bitmap,
+  so pinch-zoom currently magnifies a thumbnail. Full decode with sub-sampling
+  belongs with the same performance pass.
+
+### Deviations and resolved tensions
+
+25. **Grouping deliberately does not sort.** §6.9.3 puts ordering in the query
+    (INV-9). If `DayGroups` re-sorted, a broken query would still render
+    perfect headers and A7 would pass while the product was wrong.
+26. **The viewer reads the list from a process-scoped `ViewerSession`** rather
+    than an Intent extra. A few thousand items cannot cross an Intent, and
+    re-querying could yield a different order than the grid showed — §6.10
+    requires the viewer to page through *the same* list.
+27. **Category rows are modelled as directory entries** so one adapter, one
+    check target and one row layout serve both categories and folders. §6.9
+    requires both to open a real listing; giving them separate code paths is
+    how one of them ends up a toast.
+
+---
