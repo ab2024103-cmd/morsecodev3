@@ -51,6 +51,14 @@ object AppServices {
     /** §12.5: the one repository behind every listing; no screen queries MediaStore. */
     val mediaLibrary: MediaLibrary by lazy { MediaLibrary(appContext, deviceTier, logStore) }
 
+    /**
+     * §20.1: ONE canonical selection, read by every tab's renderer and by the
+     * send queue. Clearing it clears it everywhere.
+     */
+    val selection: app.morsecode.android.core.media.Selection by lazy {
+        app.morsecode.android.core.media.Selection()
+    }
+
     /** §6.9.2 thumbnails, tier-scaled (§13). */
     val thumbnails: ThumbnailCache by lazy { ThumbnailCache(appContext, deviceTier, logStore) }
 
