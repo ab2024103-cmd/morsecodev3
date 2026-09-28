@@ -1446,25 +1446,34 @@ was made provable instead.
 It deliberately does not run in CI: §19.3's "throwaway keys FORBIDDEN" is
 exactly what a build-time `keytool -genkeypair` would produce.
 
-## Stage 18 — run the app in CI (§21.3) — INTERIM REPORT
 
-**Status: the harness is built and has already produced its first real finding.
-The GitHub token in my environment expired mid-stage, so the last run could not
-be read back. Everything below is from runs that completed.**
+## Stage 18 — run the app in CI (§21.3)
 
-### What was built
+The §22 audit was 2 PASS / 33 BLOCKED because CI had never launched the app.
+It launches it now, on two API levels, and the result is not flattering — which
+is the point.
 
-| File | Purpose |
+### The harness
+
+| File | What it does |
 | --- | --- |
-| `.github/workflows/build.yml` (new `emulator` job) | API 23 **and** API 34 emulators via `reactivecircus/android-emulator-runner`, installing the debug APK, running the instrumented suite, driving the §4.14 size sweep through `adb shell wm size`, pulling screenshots and logcat, publishing everything as artifacts **and** as a release body (artifacts are not readable from my sandbox; release bodies are). |
-| `app/src/androidTest/.../ScreenWalkTest.kt` | Instantiates every §6/§7 destination on a device, in **both themes**, photographing each and recording any that throw instead of stopping at the first. |
-| `app/src/androidTest/.../AccentAndSizeTest.kt` | Asserts each of the five accents actually reaches the theme a screen resolves (A11's mechanism). |
-| `app/src/androidTest/.../ZFilesFlowTest.kt` | Drives the Files tabs and the sort sheet through Espresso; named to sort last, for the reason below. |
-| `app/src/androidTest/.../LoopbackTransferTest.kt` | A file crossing real loopback TCP **on the Android runtime**, SHA-256 verified, with the receiving history row checked. |
-| `app/src/androidTest/.../WebShareDeviceTest.kt` | The server on the real port 33455, the API's 401 without a token, the page rendered in a WebView, and a streamed zip pulled back over HTTP. |
-| `tools/instrumented-report.py` | Turns the JUnit XML, the screenshots and the diagnostics into a markdown report published where it can be read. |
+| `.github/workflows/build.yml` — `emulator` job | API **23** and API **34** emulators; installs the debug APK, runs the instrumented suite, pulls screenshots and logcat, and publishes a markdown report as a release body (artifacts are unreadable from my sandbox; release bodies are not). |
+| `ScreenWalkTest` | Instantiates every §6/§7 destination on the device in **both themes** and photographs each one; a screen that throws is recorded and the walk continues. |
+| `AccentAndSizeTest` | Asserts each of the five accents actually reaches the theme a screen resolves. |
+| `ZFilesFlowTest` | Drives the five Files tabs and the sort sheet through Espresso, checking the echo under the tab strip. |
+| `LoopbackTransferTest` | A file crossing real loopback TCP **on the Android runtime**, SHA-256 verified, with the receive history row checked. |
+| `WebShareDeviceTest` | The server on the real port **33455**; 401 without a token; the page rendered in a **WebView**; a streamed zip pulled back with `no-store`. |
+| `Screenshots.kt`, `tools/instrumented-report.py` | Shell-side capture into `/data/local/tmp`, and the report that makes a run readable from outside. |
 
-### Finding 1 — Android 6 crash, reproduced with a trace (this is Stage 21's P0-1)
+### Results — run 36383003249
+
+| | API 34 | API 23 |
+| --- | --- | --- |
+| Instrumented tests | **8 run, 0 failed** | **3 run, 1 failed** (the suite is aborted by a process death) |
+| Screenshots | **42** (21 screens × 2 themes, plus the five accents and the Files tabs) | 0 — the app dies before the walk finishes |
+| Size sweep | 0 — see the gap below | 0 |
+
+### Finding 1 — Android 6 crash (this is Stage 21's P0-1, with its trace)
 
 ```
 java.lang.NoSuchMethodError: No interface method reversed()Ljava/util/Comparator;
@@ -1474,56 +1483,72 @@ java.lang.NoSuchMethodError: No interface method reversed()Ljava/util/Comparator
     at app.morsecode.android.feature.filemanager.FilesFragment$loadNextPage$1
 ```
 
-Reproduced on API 23 in **three consecutive runs**. `Comparator.reversed()` is a
-Java-8 default method; without desugaring it does not exist on API 23, so
-**opening the Files tab kills the app on Android 6** — exactly the symptom the
-Stage 21 brief reports from the MYA-L10. Two call sites: `SortRules.kt:48`
-(items) and `SortRules.kt:61` (directory entries).
+Reproduced on API 23 in **five consecutive runs**. `Comparator.reversed()` is a
+Java-8 default method: on Android 6 without desugaring it does not exist, so
+**opening the Files tab kills the app** — exactly the MYA-L10 symptom in the
+Stage 21 brief. Two call sites: `SortRules.kt:48` and `SortRules.kt:61`. The
+death also aborts the rest of the API 23 suite, which is why only three tests
+ran there.
 
-**A10 is therefore FAIL, not BLOCKED.** It is the first criterion this project
-has been able to move off BLOCKED by evidence rather than argument, and it moved
-the wrong way — which is the point of §21.3.
+**A10: BLOCKED → FAIL.** Not fixed here, per this stage's instruction.
 
-### Finding 2 — my own lint gate is part of the defect
+### Finding 2 — the lint gate is part of the defect
 
 §20.8's Java-8 family lists `removeIf`, `putIfAbsent`, `computeIfAbsent`,
-`computeIfPresent`, `getOrDefault`, `replaceAll`, `.stream(`, `Stream.`,
-`Collectors.` — and **not** `Comparator.reversed()`, `thenComparing`,
-`Map.forEach` or `Optional`. The gate passed 256 files while shipping a
-guaranteed API 23 crash. The Stage 21 brief says the gate "is broken too and
-must be fixed in the same change"; this report is the evidence for that, and
-the fix belongs with the fix for the crash, not here (§ Stage 18: "do not fix
-anything except what is needed to make the harness run").
+`computeIfPresent`, `getOrDefault`, `replaceAll`, `.stream(`, `Stream.` and
+`Collectors.` — and **not** `reversed()`, `thenComparing`, `Map.forEach` or
+`Optional`. The gate passed 256 files while the build contained a guaranteed
+API 23 crash. Stage 21 already requires the gate to be fixed in the same change
+as the crash; this is the evidence for that.
 
-### Finding 3 — five harness faults, all mine, all fixed
+### Finding 3 — six harness faults, all mine
 
-Recorded because they cost five CI rounds and would otherwise look like product
-failures:
+They cost eight CI rounds, and each would have looked like a product failure:
 
-1. `withText("Files")` matched the tab, the screen title and the nav label.
-2. Screenshots written from the app to `/sdcard` fail with EACCES on API 23 and
-   EPERM on API 34 — scoped storage. They are now taken by `screencap` running
-   as the shell user.
-3. A screenshot failure was reported as a **test** failure, masking what the
-   product did. Capture is now best-effort.
-4. `GrantPermissionRule(WRITE_EXTERNAL_STORAGE)` is a `SecurityException` on
-   API 34.
-5. A crash in one suite cancelled the four after it, so API 23 only ever ran
-   two tests. Ordering is now by class name, with the crashing suite last.
+1. `withText("Files")` matched the tab, the title and the nav label at once.
+2. Screenshots written from the app to `/sdcard`: EACCES on 23, EPERM on 34.
+3. A screenshot failure reported as a **test** failure, masking the product.
+4. `GrantPermissionRule(WRITE_EXTERNAL_STORAGE)` throws on API 34.
+5. One crashing suite cancelled the four after it.
+6. **The root cause of three "zero screenshot" rounds**: `capture()` begins
+   with `waitForIdleSync()`, and I called it inside `onActivity` — the main
+   thread, where that method throws. The caller's `runCatching` swallowed it,
+   so no PNG and no log line appeared. Capture now refuses the main thread out
+   loud.
 
-### Where the harness stands
+### §22 — the re-audit
 
-The last three runs died inside the Gradle invocation with no output — the only
-variable was how that invocation was written (a per-class loop, then a class
-filter, then output redirection). The command is now byte-for-byte the one that
-ran tests in the first two runs. **That run was pushed but could not be read
-back: the GitHub credentials in my environment expired.** It needs reconnecting
-before the result can be reported.
+Only the criteria the emulator actually settled have moved. §21.3 says a
+"no device" excuse is not available where an emulator can decide it — so where
+something is still BLOCKED below, the reason given is what the **harness does
+not yet drive**, not the absence of hardware.
 
-### §22 re-audit
+| # | Before | Now | Why |
+| --- | --- | --- | --- |
+| A6 | PASS | **PASS** | Now also proven on-device: `LoopbackTransferTest` moves a file over real TCP on Android and matches SHA-256. |
+| A19 | PASS | **PASS** | Unchanged. |
+| A10 | BLOCKED | **FAIL** | The crash above, reproduced five times with a trace. |
+| A11 | BLOCKED | **BLOCKED** (2 of 3 clauses now executed) | Every screen renders in **both themes** on a device (42 screenshots) and all five accents reach the resolved theme. The WebShare page's accent is still unproven — the site is rendered in a WebView but its theming is not asserted. |
+| A5 | BLOCKED | **BLOCKED** (server contract proven on-device) | 33455 answers, 401 without a token, the page renders in a WebView, the zip streams. The accept/reject **dialog** is not exercised: the test's consent callback answers directly. |
+| A34 | BLOCKED | **BLOCKED** (control proven) | The sort sheet opens, choosing "Size" updates the echo to "Size · largest first". The emulator's media store is empty, so re-ordering real items is still unobserved. |
+| A35 | BLOCKED | **BLOCKED** | The size sweep is the one §21.3 clause I could not deliver — see the gap below. |
+| A1, A3, A9 | BLOCKED | **BLOCKED** | Multi-phone timing; §21.3 permits this. |
+| A17 | BLOCKED | **BLOCKED** | TalkBack; §21.3 permits this. |
+| A2, A7, A8, A12–A16, A18, A20–A33 | BLOCKED | **BLOCKED** | Not permitted by §21.3 and **not** hardware-limited: the harness renders screens and exercises services, but does not yet drive the journeys these criteria describe (pick → send → transfer rows; pause/cancel mid-flight; the viewer's swipe; the browser's selection, lightbox, uploads and players). That is the remaining work, and it is mine, not the environment's. |
 
-Not written yet, and deliberately so: §21.3 says a criterion may only leave
-BLOCKED when the emulator has actually settled it. One criterion has moved —
-**A10: BLOCKED → FAIL**, with the trace above. The rest wait for a completed
-emulator run.
+**Tally: 2 PASS, 1 FAIL, 32 BLOCKED** — where "BLOCKED" now means, for 26 of
+them, that the harness has not been pointed at them yet.
+
+### The one §21.3 clause not delivered
+
+The `adb shell wm size` sweep. Five attempts: a resize wedges the adb
+connection, and every variant (subshell timeout, per-call `timeout`, tolerant
+`|| true`) still ends with the script killed inside that phase. Because of it
+A35 stays BLOCKED. The screenshots are pulled **before** the sweep now, so it
+can no longer cost the rest of the evidence.
+
+Also not delivered: the loopback transfer runs **inside one emulator** rather
+than between two instances. Two instances in one job cannot see each other
+without host-side port forwarding that the action does not provide; the
+in-emulator run exercises the same transport, accept loop, sink and engine.
 
