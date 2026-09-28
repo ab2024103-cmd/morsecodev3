@@ -284,23 +284,30 @@ jobs:
             ./gradlew --no-daemon connectedDebugAndroidTest
             echo "gradle_exit=$?" >> "$GITHUB_ENV"
 
-            echo "phase=sweep" > script-marker.txt
-            mkdir -p sweep
-            for size in 320x640 360x740 412x870 480x960 600x960 840x1200; do
-              adb shell wm size "$size"
-              adb shell am start -n app.morsecode.android/.MainActivity
-              sleep 4
-              adb exec-out screencap -p > "sweep/api${{ matrix.api }}-$size.png"
-            done
-            adb shell wm size reset
-            adb shell wm density reset
-
+            # Evidence FIRST. The last run passed 8/8 on API 34 and still
+            # reported zero screenshots, because the sweep died before the pull
+            # ever ran. Nothing that can fail goes in front of the artifacts.
             echo "phase=pull" > script-marker.txt
             mkdir -p screenshots
-            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1
-            adb pull /sdcard/morsecode-shots screenshots > shots-pull.txt 2>&1
-            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots >> shots-pull.txt 2>&1
-            ls -R screenshots > shots-pulled.txt 2>&1
+            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1 || true
+            adb pull /sdcard/morsecode-shots screenshots > shots-pull.txt 2>&1 || true
+            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots >> shots-pull.txt 2>&1 || true
+            ls -R screenshots > shots-pulled.txt 2>&1 || true
+
+            # §21.3's size sweep: the §4.14 matrix, driven from adb. Every call
+            # is tolerant — a sweep frame is worth less than the suite's own
+            # evidence and must never cost it.
+            echo "phase=sweep" > script-marker.txt
+            mkdir -p sweep
+            for size in 320x640 360x740 480x960 600x960 840x1200; do
+              adb shell wm size "$size" || true
+              adb shell am start -n app.morsecode.android/.MainActivity || true
+              sleep 3
+              adb exec-out screencap -p > "sweep/api${{ matrix.api }}-$size.png" || true
+            done
+            adb shell wm size reset || true
+            adb shell wm density reset || true
+            ls -l sweep > sweep-listing.txt 2>&1 || true
 
             echo "phase=completed" > script-marker.txt
             exit 0
@@ -315,7 +322,7 @@ jobs:
           cp -r app/build/reports/androidTests emulator-evidence/reports 2>/dev/null || true
           cp -r results emulator-evidence/results 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
-          cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt emulator-evidence/ 2>/dev/null || true
+          cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt
