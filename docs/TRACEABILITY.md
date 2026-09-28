@@ -1552,3 +1552,114 @@ than between two instances. Two instances in one job cannot see each other
 without host-side port forwarding that the action does not provide; the
 in-emulator run exercises the same transport, accept loop, sink and engine.
 
+
+## Stage 19 — dependencies and size (§3.3 rewritten, §19.2, §19.4)
+
+### What was replaced, not layered
+
+§3.3's new text is explicit that Material and Media3 are REQUIRED and that
+hand-rolling them is "the single biggest cause of a UI that is similar but not
+the same". Each hand-built widget was therefore deleted, not wrapped:
+
+| Was | Now | What the hand-built version could not do |
+| --- | --- | --- |
+| `Theme.AppCompat.DayNight` | **`Theme.Material3.DayNight`**, with every MDC colour role mapped to the existing §4 tokens | — |
+| `BottomSheet` over `AppCompatDialogFragment` | **`BottomSheetDialogFragment`** | drag-to-dismiss, the scrim, the spring, the handle, insets |
+| `Ui.snackbar` (a view added to the content root on a timer) | **Material `Snackbar`** | swipe-to-dismiss, queueing, insets, accessibility timeout extension |
+| `SwitchCompat` | **`MaterialSwitch`** | the M3 thumb/track and its state animation |
+| `TabStripView` (hand-drawn underline) | **`TabLayout`** in `MODE_FIXED` + `GRAVITY_FILL` | indicator animation, ripples, the tab-bar role for TalkBack |
+| `StateChipView` (a TextView with a drawable) | **`Chip`** | shape, ripple, chip semantics |
+| `BottomNavView` (LinearLayout of cells) | **`BottomNavigationView`**, §4.4's wash as its active indicator | state-list animation, label truncation, navigation-bar role |
+| viewer send button | **`FloatingActionButton`** | elevation and pressed state |
+| `MediaPlayer` (music) | **ExoPlayer** + `MediaSession` | ExoPlayer owns audio focus and becoming-noisy, so ~90 lines of hand-rolled focus/ducking/noisy code were deleted |
+| `VideoView` | **ExoPlayer behind `PlayerView`** with `useController = false` | §6.11's codec-coverage reason on API 23; §6.11's own chrome stays ours |
+| hand-rolled thumbnail LRU in the grid | **Coil** | decode-for-target, disk cache, cancel-on-recycle |
+
+### The regression the harness caught immediately
+
+Adopting `MaterialSwitch` broke **every screen with a settings row**:
+
+```
+java.lang.NullPointerException: Attempt to invoke interface method
+  'int java.lang.CharSequence.length()' on a null object reference
+    at androidx.appcompat.widget.SwitchCompat.makeLayout(SwitchCompat.java:993)
+```
+
+`SwitchCompat.makeLayout` measures `textOn`/`textOff` unconditionally and
+throws when they are null. Fixed by setting empty labels and `showText = false`.
+Without Stage 18's emulator this would have shipped: the unit suite passes
+either way, because the crash only happens when the view is measured on a
+device.
+
+### Size (§19.4)
+
+| | Before Stage 19 | After |
+| --- | --- | --- |
+| Release APK | 1.7 MB | **4.3 MB** (4.03 MB compressed) |
+| Debug APK | 6.2 MB | **13 MB** |
+
+Composition of the release APK, from `tools/apk-report.py`:
+
+| Part | Compressed |
+| --- | --- |
+| dex (code) | 1.80 MB |
+| resources.arsc | 1.45 MB |
+| res (drawables, layouts) | 0.58 MB |
+| META-INF (signature) | 0.12 MB |
+| other | 0.05 MB |
+| assets/web (WebShare site) | 0.01 MB |
+
+§19.4 names five suspicions for an undersized APK. Four are now **excluded by
+evidence**, checked against the unminified debug APK because the release's
+names are obfuscated:
+
+| §19.2 / §19.4 check | Result |
+| --- | --- |
+| Material Components present | yes |
+| Media3 / ExoPlayer present | yes |
+| launcher: adaptive (anydpi-v26) | yes |
+| launcher: round | yes |
+| launcher: every density | yes |
+| WebShare site packaged | yes |
+
+**The honest verdict: 4.3 MB is still below §19.4's ~4.5 MB floor, and I am
+reporting that rather than rounding it up.** What the evidence says about why:
+
+- the libraries *are* in the build — the debug APK went from 6.2 MB to 13 MB,
+  which is the true weight of Material + Media3 + Coil;
+- the release is minified and resource-shrunk, so R8 removes the parts of those
+  libraries a code-built UI never references. The gap between 13 MB and 4.3 MB
+  is shrinking, not absence;
+- this build bundles no raster assets, no fonts (system Roboto) and no audio
+  (§6.13's cues are `ToneGenerator`, recorded as deviation 31 in Stage 12) —
+  a comparable app at 6.5 MB almost certainly ships all three.
+
+The remaining §19.4 suspicion I cannot exclude is its last one: "screens that
+were stubbed and then shrunk away". Stage 21's P1-7 (§20.10a, "screens that
+say 'not yet available' are shipping") is the same observation from the other
+side, and that is where it belongs.
+
+### Evidence
+
+- Build run **36388565755**: lint gate clean over 256 files, **227 unit tests,
+  0 failures**, both APKs published, composition table in the release notes.
+- Emulator **API 34: 8 instrumented tests, 0 failures, 42 screenshots** — the
+  whole Material/Media3 UI renders on a device in both themes.
+- Emulator **API 23: 3 tests, 1 failure, 6 screenshots** — still the
+  `Comparator.reversed()` crash from Stage 18 (A10 remains FAIL, unfixed here
+  by instruction), but the evidence now survives it.
+
+### Harness faults fixed in passing
+
+1. `withParent(TabStripView)` stopped matching once `TabLayout` nested its
+   labels in `TabView`; now `isDescendantOfA`.
+2. **Every run whose suite failed also lost its screenshots and its sweep**:
+   the emulator action ends the script at the first non-zero exit regardless of
+   `set +e`, so the Gradle call now captures its status instead of returning
+   it. That is why API 23 produced evidence for the first time.
+
+### Still outstanding from §21.3
+
+The `adb shell wm size` sweep still yields no frames (the resize wedges the
+step). A35 stays BLOCKED.
+
