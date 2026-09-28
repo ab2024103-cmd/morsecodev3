@@ -55,9 +55,13 @@ def main() -> None:
     print()
 
     for name, title in (
+        ("emulator-evidence/INDEX.txt", "Everything the job collected"),
+        ("emulator-evidence/shots-listing.txt", "/sdcard/morsecode-shots on the device"),
+        ("emulator-evidence/shots-pull.txt", "adb pull output"),
+        ("emulator-evidence/capture-problems.txt", "Capture problems recorded by the suite"),
+        ("emulator-evidence/sweep-listing.txt", "Sweep frames written"),
         ("emulator-evidence/diag.txt", "Device as the harness found it"),
         ("emulator-evidence/gradle-tails.txt", "Gradle output (tail)"),
-        ("emulator-evidence/shots-listing.txt", "What was on the device"),
     ):
         if os.path.exists(name):
             body = open(name, errors="replace").read().strip()

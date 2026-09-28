@@ -41,12 +41,34 @@ object Screenshots {
 
     private val problems = StringBuilder()
 
+    /** Written once, so a zero-PNG run can be diagnosed from the artifact. */
+    private var probed = false
+
+    private fun probeOnce() {
+        if (probed) return
+        probed = true
+        val result = runCatching {
+            shell("mkdir -p $SHELL_DIR")
+            shell("sh -c 'echo probe > $SHELL_DIR/_probe.txt'")
+            shell("ls -l $SHELL_DIR")
+        }.getOrElse { "probe failed: ${it.javaClass.simpleName}: ${it.message}" }
+        problems.append("probe: $result\n")
+    }
+
     fun capture(activity: Activity, name: String, theme: String) {
+        probeOnce()
         val fileName = "$name-$theme.png"
         instrumentation.waitForIdleSync()
-        if (shellCapture(fileName)) return
-        if (bitmapCapture(activity, fileName)) return
+        if (shellCapture(fileName)) {
+            problems.append("ok(shell): $fileName\n")
+            return
+        }
+        if (bitmapCapture(activity, fileName)) {
+            problems.append("ok(bitmap): $fileName\n")
+            return
+        }
         note(fileName, "no capture path worked on API ${Build.VERSION.SDK_INT}")
+        flushProblems()
     }
 
     /** `screencap -p <path>`, run as shell through UiAutomation. */
@@ -104,7 +126,7 @@ object Screenshots {
         runCatching { File(appDirectory, "$name.NOTE.txt").writeText(message) }
     }
 
-    /** Written at the end of the run so a zero-PNG result explains itself. */
+    /** Written continuously so a zero-PNG result explains itself. */
     fun flushProblems() {
         if (problems.isEmpty()) return
         runCatching { File(appDirectory, "capture-problems.txt").writeText(problems.toString()) }

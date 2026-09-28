@@ -299,14 +299,18 @@ jobs:
             # evidence and must never cost it.
             echo "phase=sweep" > script-marker.txt
             mkdir -p sweep
-            for size in 320x640 360x740 480x960 600x960 840x1200; do
-              adb shell wm size "$size" || true
-              adb shell am start -n app.morsecode.android/.MainActivity || true
-              sleep 3
-              adb exec-out screencap -p > "sweep/api${{ matrix.api }}-$size.png" || true
-            done
+            # Bounded and disowned: this loop has killed the script three
+            # times, and a sweep frame is worth far less than the suite's own
+            # evidence, which is already collected above.
+            timeout 180 bash -c '
+              for size in 320x640 360x740 480x960 600x960 840x1200; do
+                adb shell wm size "$size" || true
+                adb shell am start -n app.morsecode.android/.MainActivity || true
+                sleep 3
+                adb exec-out screencap -p > "sweep/api'"${{ matrix.api }}"'-$size.png" || true
+              done
+            ' || true
             adb shell wm size reset || true
-            adb shell wm density reset || true
             ls -l sweep > sweep-listing.txt 2>&1 || true
 
             echo "phase=completed" > script-marker.txt
