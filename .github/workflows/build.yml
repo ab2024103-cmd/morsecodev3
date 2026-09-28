@@ -361,7 +361,17 @@ jobs:
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
           cp script-marker.txt gradle-exit.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt capture-log.txt emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
-          find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
+          # This step runs outside android-emulator-runner, so unlike the
+          # script itself it can safely publish an environment value for the
+          # final verdict step.
+          if [ -f gradle-exit.txt ]; then
+            INSTRUMENTED_EXIT=$(tr -d '[:space:]' < gradle-exit.txt)
+          else
+            INSTRUMENTED_EXIT=1
+          fi
+          echo "instrumented_exit=$INSTRUMENTED_EXIT" | tee -a emulator-evidence/INDEX.txt
+          echo "INSTRUMENTED_GRADLE_EXIT=$INSTRUMENTED_EXIT" >> "$GITHUB_ENV"
+          find emulator-evidence -type f | head -60 >> emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt
           python3 tools/instrumented-report.py > emulator-report.md || true
           cat emulator-report.md
@@ -395,8 +405,8 @@ jobs:
       - name: Fail if the instrumented suite failed
         if: always()
         run: |
-          GRADLE_EXIT=$(cat gradle-exit.txt 2>/dev/null || echo 1)
-          if [ "$GRADLE_EXIT" != "0" ]; then
+          echo "Instrumented Gradle exit: ${INSTRUMENTED_GRADLE_EXIT:-missing}"
+          if [ "${INSTRUMENTED_GRADLE_EXIT:-1}" != "0" ]; then
             echo "::error::the instrumented suite failed on API ${{ matrix.api }} —" \
                  "see the emulator-api${{ matrix.api }} artifact and the release notes"
             exit 1
