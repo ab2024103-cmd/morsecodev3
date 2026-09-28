@@ -28,7 +28,7 @@ def main() -> None:
     with zipfile.ZipFile(path) as apk:
         infos = list(apk.infolist())
         names = [i.filename for i in infos]
-        total = sum(int(i.compressed_size or 0) for i in infos)
+        total = sum(int(i.compress_size or 0) for i in infos)
 
         buckets = collections.Counter()
         for info in infos:
@@ -49,7 +49,7 @@ def main() -> None:
                 bucket = "META-INF (signature)"
             else:
                 bucket = "other"
-            buckets[bucket] += info.compressed_size
+            buckets[bucket] += info.compress_size
 
     print("### APK composition (§19.4)")
     print()
