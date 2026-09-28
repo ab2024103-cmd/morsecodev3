@@ -21,11 +21,14 @@ def mb(value: int) -> float:
 
 
 def main() -> None:
+    if len(sys.argv) < 2 or not sys.argv[1]:
+        print("### APK composition (§19.4)\n\nNo APK was found to measure.")
+        return
     path = sys.argv[1]
     with zipfile.ZipFile(path) as apk:
-        infos = apk.infolist()
+        infos = list(apk.infolist())
         names = [i.filename for i in infos]
-        total = sum(i.compressed_size for i in infos)
+        total = sum(int(i.compressed_size or 0) for i in infos)
 
         buckets = collections.Counter()
         for info in infos:

@@ -160,9 +160,11 @@ jobs:
       # alone cannot tell you WHAT is missing, so this breaks the APK down.
       - name: APK composition (§19.4)
         id: composition
+        continue-on-error: true
         run: |
           APK=$(ls dist/morsecode-*-release.apk dist/morsecode-*-preview-unsigned.apk 2>/dev/null | head -1)
-          python3 tools/apk-report.py "$APK" > composition.md
+          python3 tools/apk-report.py "$APK" > composition.md 2> composition-error.txt || \
+            cat composition-error.txt >> composition.md
           cat composition.md
           {
             echo 'composition<<COMPOSITION'
