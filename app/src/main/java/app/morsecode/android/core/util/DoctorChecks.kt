@@ -126,7 +126,7 @@ object DoctorChecks {
                         "battery",
                         Status.WARN,
                         "Battery optimization ON",
-                        "A transfer ended after the app went to the background — request an exemption to help keep it alive",
+                        "A transfer was interrupted after the app went to the background — request an exemption to help keep it alive",
                         "✓ Request battery exemption",
                     )
                 else ->
