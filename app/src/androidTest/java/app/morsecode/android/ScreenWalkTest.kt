@@ -53,7 +53,11 @@ class ScreenWalkTest {
             }
             instrumentation.waitForIdleSync()
             Thread.sleep(SETTLE_MS)
-            scenario.onActivity { activity -> runCatching { Screenshots.capture(activity, name, theme) } }
+            // Off the main thread: `onActivity` runs its block there, and
+            // capture cannot work from it.
+            val held = arrayOfNulls<MainActivity>(1)
+            scenario.onActivity { activity -> held[0] = activity }
+            held[0]?.let { runCatching { Screenshots.capture(it, name, theme) } }
         }
     }
 

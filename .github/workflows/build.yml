@@ -292,7 +292,8 @@ jobs:
             adb shell ls -l /data/local/tmp/morsecode-shots > shots-listing.txt 2>&1 || true
             adb pull /data/local/tmp/morsecode-shots screenshots > shots-pull.txt 2>&1 || true
             adb shell "run-as app.morsecode.android ls -l files/screenshots" >> shots-listing.txt 2>&1 || true
-            grep -i MorsecodeShots logcat-${{ matrix.api }}.txt > capture-log.txt 2>&1 || true
+            adb logcat -d -s MorsecodeShots:I > capture-log.txt 2>&1 || true
+            grep -rh MorsecodeShots app/build/outputs/androidTest-results >> capture-log.txt 2>&1 || true
             ls -R screenshots > shots-pulled.txt 2>&1 || true
 
             # §21.3's size sweep: the §4.14 matrix, driven from adb. Every call

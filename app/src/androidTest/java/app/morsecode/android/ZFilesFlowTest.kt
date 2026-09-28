@@ -48,6 +48,16 @@ class ZFilesFlowTest {
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
+    /** Capture from the test thread; `onActivity` runs on the main one. */
+    private fun capture(
+        scenario: androidx.test.core.app.ActivityScenario<MainActivity>,
+        name: String,
+    ) {
+        val held = arrayOfNulls<MainActivity>(1)
+        scenario.onActivity { held[0] = it }
+        held[0]?.let { runCatching { Screenshots.capture(it, name, "dark") } }
+    }
+
     @Test
     fun everyFilesTabOpensAndTheSortSheetWorks() {
         AppServices.prefs.onboardingSeen = true
@@ -62,7 +72,7 @@ class ZFilesFlowTest {
                     .perform(click())
                 instrumentation.waitForIdleSync()
                 Thread.sleep(400)
-                scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-${tab.lowercase()}", "dark") } }
+                capture(scenario, "06.9-files-${tab.lowercase()}")
             }
 
             // §6.9: the sort icon is a working control, not decoration.
@@ -74,7 +84,7 @@ class ZFilesFlowTest {
             Thread.sleep(300)
             // The echo under the tab strip must now name the active order.
             onView(withText("Size · largest first")).check(matches(isDisplayed()))
-            scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-sorted", "dark") } }
+            capture(scenario, "06.9-files-sorted")
         }
     }
 
@@ -98,7 +108,7 @@ class ZFilesFlowTest {
             scenario.onActivity { it.selectTab(BottomNavView.Tab.FILES) }
             instrumentation.waitForIdleSync()
             Thread.sleep(600)
-            scenario.onActivity { runCatching { Screenshots.capture(it, "06.9-files-selection", "dark") } }
+            capture(scenario, "06.9-files-selection")
         }
 
         assertEquals(1, selection.count)

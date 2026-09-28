@@ -62,9 +62,20 @@ object Screenshots {
         report("probe: ${result.trim()}")
     }
 
+    /**
+     * MUST be called from the test thread, never from inside `onActivity`.
+     * `waitForIdleSync` throws on the main thread, and three rounds of zero
+     * screenshots were exactly that: the throw happened on capture's first
+     * line and the caller's `runCatching` swallowed it, so nothing was written
+     * and nothing was logged.
+     */
     fun capture(activity: Activity, name: String, theme: String) {
         probeOnce()
         val fileName = "$name-$theme.png"
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            report("capture called on the main thread: $fileName")
+            return
+        }
         instrumentation.waitForIdleSync()
         if (shellCapture(fileName)) {
             report("ok(shell): $fileName")

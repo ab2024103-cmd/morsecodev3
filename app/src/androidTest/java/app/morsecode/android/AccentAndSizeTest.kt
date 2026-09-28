@@ -27,6 +27,7 @@ class AccentAndSizeTest {
             AppServices.prefs.setAccent(accent)
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 instrumentation.waitForIdleSync()
+                val held = arrayOfNulls<MainActivity>(1)
                 scenario.onActivity { activity ->
                     val resolved = ThemeColors.accent(activity)
                     val expected = ContextCompat.getColor(activity, accent.colorRes)
@@ -35,8 +36,9 @@ class AccentAndSizeTest {
                         expected,
                         resolved,
                     )
-                    runCatching { Screenshots.capture(activity, "accent-${accent.key}", "dark") }
+                    held[0] = activity
                 }
+                held[0]?.let { runCatching { Screenshots.capture(it, "accent-${accent.key}", "dark") } }
             }
         }
         AppServices.prefs.setAccent(Accent.DEFAULT)
