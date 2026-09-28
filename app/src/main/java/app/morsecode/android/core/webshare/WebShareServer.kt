@@ -11,6 +11,11 @@ import app.morsecode.android.core.storage.Destinations
 import app.morsecode.android.core.storage.ZipUtil
 import app.morsecode.android.core.util.Ids
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -59,6 +64,10 @@ class WebShareServer(
 
     /** A held SSE stream, not the former two-second snapshot poll (§7.8). */
     private val sse = SseHub(snapshot = { sessionId -> eventsPayload(sessionId).toString() })
+
+    /** Consent belongs to the phone UI, never to a blocking NanoHTTPD worker. */
+    private val consentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val consentInFlight = ConcurrentHashMap.newKeySet<String>()
 
     init {
         // A phone-originated offer reaches its owning browser immediately. The
@@ -133,20 +142,33 @@ class WebShareServer(
             )
             WebSessions.State.REJECTED -> json(JSONObject().put("state", "rejected"))
             WebSessions.State.PENDING -> {
-                // Nothing — no listing, no thumbnail, no byte — crosses before
-                // Accept (§6.16, §17.2). The browser polls and waits.
-                val accepted = runBlocking { onConsentNeeded(session) }
-                val answered = if (accepted) sessions.accept(session.id) else sessions.reject(session.id)
-                when (answered?.state) {
-                    WebSessions.State.ACCEPTED -> json(
-                        JSONObject()
-                            .put("state", "accepted")
-                            .put("token", answered.token)
-                            .put("sessionId", answered.id),
-                    )
-                    WebSessions.State.REJECTED -> json(JSONObject().put("state", "rejected"))
-                    else -> json(JSONObject().put("state", "pending"))
+                // Nothing — no listing, thumbnail or byte — crosses before
+                // Accept (§6.16, §17.2). Crucially, reply now: a browser can
+                // render its waiting page and poll while the phone dialog is up.
+                requestConsent(session)
+                json(JSONObject().put("state", "pending").put("sessionId", session.id))
+            }
+        }
+    }
+
+    /** One phone dialog per browser session, regardless of how often it polls. */
+    private fun requestConsent(session: WebSessions.Session) {
+        if (!consentInFlight.add(session.id)) return
+        consentScope.launch {
+            try {
+                val accepted = onConsentNeeded(session)
+                // The user may have stopped WebShare or revoked this browser
+                // while the dialog was showing; never resurrect that session.
+                if (sessions.get(session.id)?.state == WebSessions.State.PENDING) {
+                    if (accepted) sessions.accept(session.id) else sessions.reject(session.id)
                 }
+            } catch (error: Exception) {
+                logStore?.e("WebShare consent failed: ${error.javaClass.simpleName}")
+                if (sessions.get(session.id)?.state == WebSessions.State.PENDING) {
+                    sessions.reject(session.id)
+                }
+            } finally {
+                consentInFlight.remove(session.id)
             }
         }
     }
@@ -562,6 +584,8 @@ class WebShareServer(
     /** Called only by the explicit WebShare Stop path (§7.1 INV-4). */
     fun closeEventStreams() {
         sse.closeAll()
+        consentScope.cancel()
+        consentInFlight.clear()
     }
 
     private fun asset(name: String, mime: String): Response {

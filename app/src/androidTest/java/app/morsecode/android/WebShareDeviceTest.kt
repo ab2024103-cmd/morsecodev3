@@ -69,13 +69,22 @@ class WebShareDeviceTest {
         return code to body
     }
 
+    private fun awaitAcceptedHello(port: Int): Pair<Int, String> {
+        repeat(80) {
+            val reply = get(port, "/api/hello")
+            if (!reply.second.contains("\"state\":\"pending\"")) return reply
+            Thread.sleep(25)
+        }
+        return get(port, "/api/hello")
+    }
+
     @Test
     fun theServerAnswersOnTheRealPortAndGuardsItsApi() {
         // The prescribed port, on the device, not an ephemeral one (§7.1).
         val (port, _) = start(consent = true, port = Ids.PORT_WEBSHARE)
         assertEquals(33455, port)
 
-        val (helloCode, helloBody) = get(port, "/api/hello")
+        val (helloCode, helloBody) = awaitAcceptedHello(port)
         assertEquals(200, helloCode)
         val token = Regex("\"token\":\"([a-f0-9]+)\"").find(helloBody)?.groupValues?.get(1)
         assertTrue("no token issued: $helloBody", !token.isNullOrEmpty())
@@ -86,6 +95,22 @@ class WebShareDeviceTest {
         val (indexCode, indexBody) = get(port, "/", token)
         assertEquals(200, indexCode)
         assertTrue(indexBody.contains("Morsecode"))
+    }
+
+    @Test
+    fun everyBrowserAssetPackagedWithTheHomePageAvoids404() {
+        val (port, _) = start(consent = true)
+        val (_, home) = get(port, "/")
+        val paths = Regex("(?:src|href)=\"(/assets/[^\"]+)\"")
+            .findAll(home)
+            .map { it.groupValues[1] }
+            .toList()
+        assertTrue("home page must name its packaged browser assets", paths.isNotEmpty())
+        for (path in paths) {
+            val (code, body) = get(port, path)
+            assertEquals("missing browser asset $path", 200, code)
+            assertTrue("empty browser asset $path", body.isNotEmpty())
+        }
     }
 
     @Test
@@ -126,7 +151,7 @@ class WebShareDeviceTest {
     @Test
     fun aZipOfASelectionStreamsFromTheDevice() {
         val (port, _) = start(consent = true)
-        val (_, hello) = get(port, "/api/hello")
+        val (_, hello) = awaitAcceptedHello(port)
         val token = Regex("\"token\":\"([a-f0-9]+)\"").find(hello)?.groupValues?.get(1)
 
         val folder = java.io.File(context.cacheDir, "zip-src-${System.nanoTime()}").apply { mkdirs() }

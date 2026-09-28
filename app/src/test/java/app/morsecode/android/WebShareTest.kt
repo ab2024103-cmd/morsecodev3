@@ -23,7 +23,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.ServerSocket
 import java.net.URL
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.delay
 
 /**
  * §7.1's gate, §7.2's Range and archives, §17.3's tokens.
@@ -37,6 +39,7 @@ class WebShareTest {
 
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private var server: WebShareServer? = null
+    private val consentCalls = AtomicInteger()
 
     @After
     fun tearDown() {
@@ -164,7 +167,8 @@ class WebShareTest {
 
     // ----- §7.1 / A5 over real HTTP ----------------------------------------
 
-    private fun startServer(consent: Boolean): Pair<Int, WebSessions> {
+    private fun startServer(consent: Boolean, consentDelayMillis: Long = 0): Pair<Int, WebSessions> {
+        consentCalls.set(0)
         val port = ServerSocket(0).use { it.localPort }
         val sessions = WebSessions()
         val instance = WebShareServer(
@@ -172,7 +176,11 @@ class WebShareTest {
             library = MediaLibrary(context, DeviceTier(context)),
             destinations = Destinations(context),
             sessions = sessions,
-            onConsentNeeded = { consent },
+            onConsentNeeded = {
+                consentCalls.incrementAndGet()
+                if (consentDelayMillis > 0) delay(consentDelayMillis)
+                consent
+            },
             port = port,
         )
         instance.start(2000, false)
@@ -193,13 +201,28 @@ class WebShareTest {
         return code to (body + "|" + cacheControl)
     }
 
-    @Test
-    fun anAcceptedBrowserGetsATokenAndARejectedOneGetsNothing() {
-        val (port, _) = startServer(consent = true)
+    /** Browser polling is part of §7.1: consent must never hold its HTTP call. */
+    private fun awaitHello(port: Int): Pair<Int, String> {
+        repeat(80) {
+            val reply = request(port, "/api/hello")
+            if (!reply.second.contains("\"state\":\"pending\"")) return reply
+            Thread.sleep(25)
+        }
+        return request(port, "/api/hello")
+    }
 
-        val (helloCode, helloBody) = request(port, "/api/hello")
+    @Test
+    fun aBrowserPollsPendingThenGetsATokenAfterApproval() {
+        val (port, _) = startServer(consent = true, consentDelayMillis = 180)
+
+        val (pendingCode, pendingBody) = request(port, "/api/hello")
+        assertEquals(200, pendingCode)
+        assertTrue("the waiting page must render before the phone answers", pendingBody.contains("\"state\":\"pending\""))
+
+        val (helloCode, helloBody) = awaitHello(port)
         assertEquals(200, helloCode)
         assertTrue(helloBody.contains("\"state\":\"accepted\""))
+        assertEquals("polling may not open duplicate phone dialogs", 1, consentCalls.get())
         val token = Regex("\"token\":\"([a-f0-9]+)\"").find(helloBody)?.groupValues?.get(1)
         assertNotNull(token)
 
@@ -215,7 +238,7 @@ class WebShareTest {
     @Test
     fun aRejectedBrowserIsRefusedEverything() {
         val (port, _) = startServer(consent = false)
-        val (code, body) = request(port, "/api/hello")
+        val (code, body) = awaitHello(port)
         assertEquals(200, code)
         assertTrue("rejected gets nothing", body.contains("\"state\":\"rejected\""))
         assertEquals(401, request(port, "/api/counts").first)
@@ -226,8 +249,9 @@ class WebShareTest {
     @Test
     fun everyResponseCarriesNoStore() {
         val (port, _) = startServer(consent = true)
-        val (_, helloBody) = request(port, "/api/hello")
+        val (_, helloBody) = awaitHello(port)
         val token = Regex("\"token\":\"([a-f0-9]+)\"").find(helloBody)?.groupValues?.get(1)
+        assertNotNull(token)
 
         // §7.1: "Every response carries Cache-Control: no-store".
         for (path in listOf("/", "/api/info", "/api/counts", "/nope")) {
