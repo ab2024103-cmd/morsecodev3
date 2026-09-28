@@ -130,6 +130,7 @@
     <string name="discovery_peer_nearby">Bluetooth · Phone · Nearby</string>
     <string name="discovery_peer_web">%1$s · WebShare</string>
     <string name="discovery_nearby_unavailable">Nearby needs Play Services · searching over Wi-Fi only</string>
+    <string name="discovery_nearby_permission_needed">Nearby needs permission · searching over Wi-Fi only</string>
     <string name="cd_select_peer">Select %1$s</string>
 
     <!-- ===== Send · discovery (§6.3) ===== -->
@@ -138,6 +139,17 @@
     <string name="discovery_transport_label">TRANSPORT</string>
     <string name="discovery_queue_label">QUEUE</string>
     <string name="discovery_transport_lan">Wi-Fi LAN</string>
+    <string name="discovery_transport_starting">Checking transport status…</string>
+    <string name="discovery_transport_fix">Open Connection Doctor</string>
+    <string name="discovery_not_searching">Not searching — no transport is running</string>
+    <string name="discovery_transport_lock_held">multicast lock held</string>
+    <string name="discovery_transport_lock_missing">multicast lock not held</string>
+    <string name="discovery_transport_address_unknown">network address unavailable</string>
+    <string name="discovery_transport_lan_running">LAN ● beacon 1200 ms · %1$s · %2$s</string>
+    <string name="discovery_transport_lan_off">LAN off — discovery socket unavailable</string>
+    <string name="discovery_transport_nearby_running">NEARBY ● advertising + discovering</string>
+    <string name="discovery_transport_nearby_permission">Nearby needs permission — open Connection Doctor</string>
+    <string name="discovery_transport_nearby_off">Nearby unavailable — Play Services missing</string>
     <string name="discovery_queue_empty">Nothing queued</string>
     <string name="discovery_discovered">DISCOVERED</string>
     <string name="discovery_connect">Connect</string>

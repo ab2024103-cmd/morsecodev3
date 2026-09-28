@@ -6,6 +6,7 @@ import app.morsecode.android.core.logging.LogStore
 import app.morsecode.android.core.model.DiscoveredPeer
 import app.morsecode.android.core.transfer.TransferEngine
 import app.morsecode.android.core.transfer.TransferService
+import app.morsecode.android.core.util.Permissions
 import java.util.UUID
 
 /**
@@ -37,7 +38,10 @@ class ConnectionCoordinator(
     /** §6.13 Sounds: connect · fail · success. */
     var soundFx: app.morsecode.android.core.transfer.SoundFx? = null
     private var listeners = 0
-    private var nearbyAvailable = false
+
+    /** Kept separate from preference so the Discovery row can tell the truth. */
+    enum class NearbyStatus { RUNNING, NEEDS_PERMISSION, UNAVAILABLE }
+    private var nearbyStatus = NearbyStatus.UNAVAILABLE
 
     @Volatile
     var installed = false
@@ -90,10 +94,17 @@ class ConnectionCoordinator(
         if (listeners == 1) {
             discovery.start()
             lan.start()
-            nearbyAvailable = nearby.start()
-            if (!nearbyAvailable) {
-                // §20.6: say so in the log and the Doctor, do not pretend.
-                logStore?.i("Nearby unavailable — Wi-Fi LAN only")
+            nearbyStatus = when {
+                !Permissions.allGranted(appContext, Permissions.nearby()) -> {
+                    logStore?.i("Nearby needs Nearby devices permission — Wi-Fi LAN only")
+                    NearbyStatus.NEEDS_PERMISSION
+                }
+                nearby.start() -> NearbyStatus.RUNNING
+                else -> {
+                    // §20.6: say so in the log and the Doctor, do not pretend.
+                    logStore?.i("Nearby unavailable — Wi-Fi LAN only")
+                    NearbyStatus.UNAVAILABLE
+                }
             }
         }
     }
@@ -104,7 +115,12 @@ class ConnectionCoordinator(
         if (listeners == 0) discovery.stop()
     }
 
-    fun isNearbyAvailable(): Boolean = nearbyAvailable
+    /** LAN discovery is live only when both beaconing and TCP accept are live. */
+    fun isLanAvailable(): Boolean = discovery.isRunning && lan.isListening
+
+    fun isNearbyAvailable(): Boolean = nearbyStatus == NearbyStatus.RUNNING
+
+    fun nearbyStatus(): NearbyStatus = nearbyStatus
 
     /**
      * Dials a peer. The consent handshake happens on the OTHER phone, so this

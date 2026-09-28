@@ -24,6 +24,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -97,7 +98,7 @@ class LanLoopbackTest {
         return receiverTransport.boundPort
     }
 
-    private fun startSender(source: File): LanTransport {
+    private fun startSender(source: File, port: Int = 0): LanTransport {
         senderTransport = LanTransport(
             scope = scope,
             deviceId = "sender-id",
@@ -108,7 +109,7 @@ class LanLoopbackTest {
                 conflictPolicy = Conflicts.BatchPolicy(Conflicts.Policy.RENAME),
             ),
             openContent = { FileInputStream(source) },
-            port = 0,
+            port = port,
             logStore = log,
         )
         senderTransport.start()
@@ -145,6 +146,14 @@ class LanLoopbackTest {
     )
 
     // ----- Tests ------------------------------------------------------------
+
+    @Test
+    fun aBusyControlPortIsReportedInsteadOfCrashingDiscovery() {
+        val busyPort = startReceiver()
+        val rejected = startSender(sourceFile("busy.bin", 1), busyPort)
+
+        assertFalse("a second listener must fail closed, not throw", rejected.isListening)
+    }
 
     @Test
     fun aFileCrossesTheWireByteIdentical() = runBlocking {

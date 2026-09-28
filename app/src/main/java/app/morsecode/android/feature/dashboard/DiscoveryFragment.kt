@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.morsecode.android.R
 import app.morsecode.android.core.model.DiscoveredPeer
+import app.morsecode.android.core.network.ConnectionCoordinator
 import app.morsecode.android.core.network.Discovery
 import app.morsecode.android.core.network.ManualAddress
 import app.morsecode.android.core.network.TransportKind
@@ -60,7 +61,9 @@ class DiscoveryFragment : Screen() {
     private lateinit var caption: AppCompatTextView
     private lateinit var peerList: LinearLayout
     private lateinit var emptyHolder: FrameLayout
+    private lateinit var transportRow: LinearLayout
     private lateinit var transportValue: AppCompatTextView
+    private lateinit var transportFix: AppCompatTextView
     private lateinit var queueValue: AppCompatTextView
     private lateinit var bottomAction: AppCompatTextView
     private var radar: RadarView? = null
@@ -81,7 +84,15 @@ class DiscoveryFragment : Screen() {
         }
 
         toolbar.bind(getString(R.string.title_send_files)) { nav().pop() }
+        // Preference lives in the overflow. The row itself tells the truth and
+        // leads to the Doctor, rather than pretending preference equals status.
         toolbar.addAction(R.drawable.ic_overflow, R.string.cd_overflow) { showTransportSheet() }
+
+        transportFix = Buttons.outlined(context, getString(R.string.discovery_transport_fix)) {
+            nav().push(ConnectionDoctorFragment())
+        }
+        transportFix.visibility = View.GONE
+        column.addView(transportFix, wide(0))
 
         val radarView = RadarView(context)
         radar = radarView
@@ -94,10 +105,12 @@ class DiscoveryFragment : Screen() {
         column.addView(caption, wide(8))
         column.addView(centeredMeta(getString(R.string.discovery_searching_hint)), wide(2))
 
-        val transportRow = infoRow(getString(R.string.discovery_transport_label), getString(R.string.discovery_transport_auto))
-        transportValue = transportRow.second
-        transportRow.first.setOnClickListener { showTransportSheet() }
-        column.addView(transportRow.first, wide(16))
+        val transportInfo = infoRow(getString(R.string.discovery_transport_label), getString(R.string.discovery_transport_starting))
+        transportRow = transportInfo.first
+        transportValue = transportInfo.second
+        transportValue.isSingleLine = false
+        transportRow.setOnClickListener { nav().push(ConnectionDoctorFragment()) }
+        column.addView(transportRow, wide(16))
 
         val queueRow = infoRow(getString(R.string.discovery_queue_label), getString(R.string.discovery_queue_empty))
         queueValue = queueRow.second
@@ -153,10 +166,66 @@ class DiscoveryFragment : Screen() {
             return
         }
         AppServices.connections.addListener()
-        if (!AppServices.connections.isNearbyAvailable()) {
-            Ui.snackbar(requireActivity(), getString(R.string.discovery_nearby_unavailable))
+        renderTransportState()
+        when (AppServices.connections.nearbyStatus()) {
+            ConnectionCoordinator.NearbyStatus.NEEDS_PERMISSION ->
+                Ui.snackbar(requireActivity(), getString(R.string.discovery_nearby_permission_needed))
+            ConnectionCoordinator.NearbyStatus.UNAVAILABLE ->
+                Ui.snackbar(requireActivity(), getString(R.string.discovery_nearby_unavailable))
+            ConnectionCoordinator.NearbyStatus.RUNNING -> Unit
         }
     }
+
+    /**
+     * §6.3 / §20.6: this is deliberately derived from live transport objects,
+     * not from the Auto/LAN/Nearby preference. A transport that failed to bind
+     * must be named as down before the radar is allowed to animate.
+     */
+    private fun renderTransportState() {
+        if (!this::transportValue.isInitialized) return
+        val lanRunning = AppServices.connections.isLanAvailable()
+        val nearbyStatus = if (Permissions.missing(requireContext(), Permissions.nearby()).isNotEmpty()) {
+            ConnectionCoordinator.NearbyStatus.NEEDS_PERMISSION
+        } else {
+            AppServices.connections.nearbyStatus()
+        }
+        val nearbyRunning = nearbyStatus == ConnectionCoordinator.NearbyStatus.RUNNING
+        val lan = if (lanRunning) {
+            val lock = if (AppServices.discovery.isMulticastLockHeld) {
+                getString(R.string.discovery_transport_lock_held)
+            } else {
+                getString(R.string.discovery_transport_lock_missing)
+            }
+            getString(
+                R.string.discovery_transport_lan_running,
+                AppServices.discovery.localIpv4Address()
+                    ?: getString(R.string.discovery_transport_address_unknown),
+                lock,
+            )
+        } else {
+            getString(R.string.discovery_transport_lan_off)
+        }
+        val nearby = when (nearbyStatus) {
+            ConnectionCoordinator.NearbyStatus.RUNNING ->
+                getString(R.string.discovery_transport_nearby_running)
+            ConnectionCoordinator.NearbyStatus.NEEDS_PERMISSION ->
+                getString(R.string.discovery_transport_nearby_permission)
+            ConnectionCoordinator.NearbyStatus.UNAVAILABLE ->
+                getString(R.string.discovery_transport_nearby_off)
+        }
+        transportValue.text = "$lan\n$nearby"
+        transportRow.contentDescription = "${getString(R.string.discovery_transport_label)}. $lan. $nearby"
+
+        val running = lanRunning || nearbyRunning
+        transportFix.visibility = if (running) View.GONE else View.VISIBLE
+        if (!running) {
+            caption.text = getString(R.string.discovery_not_searching)
+            radar?.visibility = View.GONE
+        }
+    }
+
+    private fun isTransportRunning(): Boolean =
+        AppServices.connections.isLanAvailable() || AppServices.connections.isNearbyAvailable()
 
     private fun observe() {
         viewLifecycleOwner.lifecycleScope.launch {
@@ -186,22 +255,27 @@ class DiscoveryFragment : Screen() {
     }
 
     private fun render(found: List<DiscoveredPeer>) {
-        val context = context ?: return
+        if (context == null) return
+        val transportRunning = isTransportRunning()
         caption.text = when (found.size) {
-            0 -> getString(R.string.discovery_searching)
+            0 -> if (transportRunning) {
+                getString(R.string.discovery_searching)
+            } else {
+                getString(R.string.discovery_not_searching)
+            }
             1 -> getString(R.string.discovery_one_device_found)
             else -> getString(R.string.discovery_devices_found, found.size)
         }
-        // §6.2/§6.3: once peers exist the radar shrinks and the list takes the
-        // space — the radar is never the only way to disambiguate peers.
-        radar?.visibility = if (found.isEmpty()) View.VISIBLE else View.GONE
+        // §20.6: never animate a radar when no listener is actually running.
+        // §6.2/§6.3: peers replace it with an unambiguous list.
+        radar?.visibility = if (found.isEmpty() && transportRunning) View.VISIBLE else View.GONE
 
         peerList.removeAllViews()
         for (peer in found) peerList.addView(peerRow(peer))
 
         emptyHolder.removeAllViews()
         val waitedLongEnough = System.currentTimeMillis() - searchStartedAt >= EMPTY_STATE_DELAY_MS
-        if (found.isEmpty() && waitedLongEnough) {
+        if (found.isEmpty() && transportRunning && waitedLongEnough) {
             // §6.3: after 15 s, offer the Doctor and the other transport.
             emptyHolder.addView(
                 emptyState(
@@ -384,7 +458,8 @@ class DiscoveryFragment : Screen() {
                     2 -> Discovery.Preference.NEARBY
                     else -> Discovery.Preference.AUTO
                 }
-                transportValue.text = labels[which]
+                // Preference changes no longer overwrite the truthful status.
+                renderTransportState()
             }
             .show()
     }

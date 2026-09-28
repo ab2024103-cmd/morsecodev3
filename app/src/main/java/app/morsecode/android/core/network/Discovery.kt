@@ -67,7 +67,29 @@ class Discovery(
      * that gap honestly (§20.6).
      */
     val isMulticastLockHeld: Boolean get() = multicastLock?.isHeld == true
+
+    /** A failed UDP bind is not a running LAN discovery transport. */
+    val isRunning: Boolean get() = announceJob?.isActive == true && socket != null
     private var socket: DatagramSocket? = null
+
+    /** Best-effort local IPv4 shown with the live LAN beacon status (§6.3). */
+    fun localIpv4Address(): String? = try {
+        val interfaces = NetworkInterface.getNetworkInterfaces()
+        while (interfaces.hasMoreElements()) {
+            val network = interfaces.nextElement()
+            if (!network.isUp || network.isLoopback) continue
+            val addresses = network.inetAddresses
+            while (addresses.hasMoreElements()) {
+                val address = addresses.nextElement()
+                if (address is java.net.Inet4Address && !address.isLoopbackAddress) {
+                    return address.hostAddress
+                }
+            }
+        }
+        null
+    } catch (_: Exception) {
+        null
+    }
 
     fun start() {
         if (announceJob?.isActive == true) return

@@ -70,11 +70,20 @@ class LanTransport(
     /** The port actually bound; differs from [port] only when 0 was asked for. */
     val boundPort: Int get() = server?.localPort ?: port
 
-    fun start() {
-        if (acceptJob?.isActive == true) return
-        val socket = ServerSocket()
-        socket.reuseAddress = true
-        socket.bind(InetSocketAddress(port))
+    /** A bind failure is a recoverable transport state, never a UI-thread crash. */
+    val isListening: Boolean get() = server?.isClosed == false && acceptJob?.isActive == true
+
+    fun start(): Boolean {
+        if (acceptJob?.isActive == true) return true
+        val socket = try {
+            ServerSocket().also {
+                it.reuseAddress = true
+                it.bind(InetSocketAddress(port))
+            }
+        } catch (error: Exception) {
+            logStore?.e("TCP control :$port unavailable: ${error.javaClass.simpleName}")
+            return false
+        }
         server = socket
         logStore?.i("TCP control :${socket.localPort} listening")
 
@@ -91,6 +100,7 @@ class LanTransport(
                 launch(Dispatchers.IO) { dispatch(client) }
             }
         }
+        return true
     }
 
     override suspend fun connect(peerId: String): TransportSession? = null
