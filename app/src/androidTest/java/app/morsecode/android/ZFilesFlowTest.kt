@@ -7,7 +7,7 @@ import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
-import androidx.test.espresso.matcher.ViewMatchers.withParent
+import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import app.morsecode.android.core.ui.TabStripView
 import org.hamcrest.Matchers.allOf
@@ -68,8 +68,14 @@ class ZFilesFlowTest {
             for (tab in listOf("Photos", "Videos", "Music", "Apps", "Files")) {
                 // "Files" is also the screen title and a bottom-nav label, so
                 // the matcher has to say WHICH "Files" it means.
-                onView(allOf(withText(tab), withParent(isAssignableFrom(TabStripView::class.java))))
-                    .perform(click())
+                onView(
+                    allOf(
+                        withText(tab),
+                        // TabLayout wraps each label in its own TabView, so the
+                        // label is a descendant rather than a direct child.
+                        isDescendantOfA(isAssignableFrom(TabStripView::class.java)),
+                    ),
+                ).perform(click())
                 instrumentation.waitForIdleSync()
                 Thread.sleep(400)
                 capture(scenario, "06.9-files-${tab.lowercase()}")

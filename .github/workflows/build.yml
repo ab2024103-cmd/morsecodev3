@@ -303,8 +303,13 @@ jobs:
             # each died silently inside Gradle; ordering is solved by the test
             # class names instead, so the suite that crashes on API 23 runs
             # last and cannot cancel the others.
-            ./gradlew --no-daemon connectedDebugAndroidTest
-            echo "gradle_exit=$?" >> "$GITHUB_ENV"
+            # `|| GRADLE_EXIT=$?` and never a bare failing command: every run
+            # whose suite failed also lost its screenshots and its sweep,
+            # because the wrapper ends the script at the first non-zero exit
+            # regardless of `set +e`.
+            GRADLE_EXIT=0
+            ./gradlew --no-daemon connectedDebugAndroidTest || GRADLE_EXIT=$?
+            echo "gradle_exit=$GRADLE_EXIT" >> "$GITHUB_ENV"
 
             # Evidence FIRST. The last run passed 8/8 on API 34 and still
             # reported zero screenshots, because the sweep died before the pull
