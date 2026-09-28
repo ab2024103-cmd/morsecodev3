@@ -269,7 +269,7 @@ jobs:
             { adb devices -l; adb shell getprop sys.boot_completed; adb shell getprop ro.build.version.sdk; } > diag.txt 2>&1
             adb logcat -c
             adb logcat > logcat-${{ matrix.api }}.txt &
-            adb shell mkdir -p /sdcard/morsecode-shots
+            adb shell mkdir -p /data/local/tmp/morsecode-shots
 
             # ONE invocation — the five-invocation loop died silently twice and
             # cost two runs to learn that. The class list is ordered so the
@@ -289,9 +289,10 @@ jobs:
             # ever ran. Nothing that can fail goes in front of the artifacts.
             echo "phase=pull" > script-marker.txt
             mkdir -p screenshots
-            adb shell ls -l /sdcard/morsecode-shots > shots-listing.txt 2>&1 || true
-            adb pull /sdcard/morsecode-shots screenshots > shots-pull.txt 2>&1 || true
-            adb pull /sdcard/Android/data/app.morsecode.android/files/screenshots screenshots >> shots-pull.txt 2>&1 || true
+            adb shell ls -l /data/local/tmp/morsecode-shots > shots-listing.txt 2>&1 || true
+            adb pull /data/local/tmp/morsecode-shots screenshots > shots-pull.txt 2>&1 || true
+            adb shell "run-as app.morsecode.android ls -l files/screenshots" >> shots-listing.txt 2>&1 || true
+            grep -i MorsecodeShots logcat-${{ matrix.api }}.txt > capture-log.txt 2>&1 || true
             ls -R screenshots > shots-pulled.txt 2>&1 || true
 
             # §21.3's size sweep: the §4.14 matrix, driven from adb. Every call
@@ -326,7 +327,7 @@ jobs:
           cp -r app/build/reports/androidTests emulator-evidence/reports 2>/dev/null || true
           cp -r results emulator-evidence/results 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
-          cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt emulator-evidence/ 2>/dev/null || true
+          cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt capture-log.txt emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt

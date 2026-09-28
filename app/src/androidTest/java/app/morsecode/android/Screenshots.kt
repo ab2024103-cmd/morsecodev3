@@ -29,8 +29,16 @@ object Screenshots {
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
-    /** The shell can write here on every image; the app cannot. */
-    const val SHELL_DIR = "/sdcard/morsecode-shots"
+    /**
+     * `/data/local/tmp` — not `/sdcard`.
+     *
+     * The evidence from three runs: `/sdcard/morsecode-shots` stayed empty and
+     * the app-private external directory was never even created, because
+     * `getExternalFilesDir` can return null and scoped storage blocks the rest.
+     * `/data/local/tmp` is writable by the shell user (which is what
+     * `screencap` runs as) and readable by `adb pull` on every image.
+     */
+    const val SHELL_DIR = "/data/local/tmp/morsecode-shots"
 
     /** Fallback when `screencap` is unavailable: app-private, still pullable. */
     private val appDirectory: File by lazy {
@@ -49,10 +57,9 @@ object Screenshots {
         probed = true
         val result = runCatching {
             shell("mkdir -p $SHELL_DIR")
-            shell("sh -c 'echo probe > $SHELL_DIR/_probe.txt'")
-            shell("ls -l $SHELL_DIR")
+            shell("ls -ld $SHELL_DIR")
         }.getOrElse { "probe failed: ${it.javaClass.simpleName}: ${it.message}" }
-        problems.append("probe: $result\n")
+        report("probe: ${result.trim()}")
     }
 
     fun capture(activity: Activity, name: String, theme: String) {
@@ -60,11 +67,11 @@ object Screenshots {
         val fileName = "$name-$theme.png"
         instrumentation.waitForIdleSync()
         if (shellCapture(fileName)) {
-            problems.append("ok(shell): $fileName\n")
+            report("ok(shell): $fileName")
             return
         }
         if (bitmapCapture(activity, fileName)) {
-            problems.append("ok(bitmap): $fileName\n")
+            report("ok(bitmap): $fileName")
             return
         }
         note(fileName, "no capture path worked on API ${Build.VERSION.SDK_INT}")
@@ -72,6 +79,16 @@ object Screenshots {
     }
 
     /** `screencap -p <path>`, run as shell through UiAutomation. */
+    /**
+     * Diagnostics go to logcat, which CI already captures — the last two runs
+     * wrote them to a directory adb could not read, which is how a
+     * zero-screenshot result stayed unexplained for two rounds.
+     */
+    private fun report(message: String) {
+        android.util.Log.i(TAG, message)
+        problems.append(message).append("\n")
+    }
+
     private fun shellCapture(fileName: String): Boolean = try {
         shell("mkdir -p $SHELL_DIR")
         shell("screencap -p $SHELL_DIR/$fileName")
@@ -87,7 +104,7 @@ object Screenshots {
         }
         size > 0
     } catch (error: Throwable) {
-        problems.append("shellCapture $fileName: ${error.javaClass.simpleName}\n")
+        report("shellCapture $fileName failed: ${error.javaClass.simpleName}: ${error.message}")
         false
     }
 
@@ -142,6 +159,7 @@ object Screenshots {
 
     private fun quote(text: String): String = "'" + text.replace("'", "") + "'"
 
+    private const val TAG = "MorsecodeShots"
     private const val CAPTURE_TIMEOUT_MS = 4000
     private const val POLL_MS = 200L
 }

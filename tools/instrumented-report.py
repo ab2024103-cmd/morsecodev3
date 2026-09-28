@@ -58,7 +58,7 @@ def main() -> None:
         ("emulator-evidence/INDEX.txt", "Everything the job collected"),
         ("emulator-evidence/shots-listing.txt", "/sdcard/morsecode-shots on the device"),
         ("emulator-evidence/shots-pull.txt", "adb pull output"),
-        ("emulator-evidence/capture-problems.txt", "Capture problems recorded by the suite"),
+        ("emulator-evidence/capture-log.txt", "What the capture code logged"),
         ("emulator-evidence/sweep-listing.txt", "Sweep frames written"),
         ("emulator-evidence/diag.txt", "Device as the harness found it"),
         ("emulator-evidence/gradle-tails.txt", "Gradle output (tail)"),
