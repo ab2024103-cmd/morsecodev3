@@ -163,8 +163,11 @@ jobs:
         continue-on-error: true
         run: |
           APK=$(ls dist/morsecode-*-release.apk dist/morsecode-*-preview-unsigned.apk 2>/dev/null | head -1)
-          python3 tools/apk-report.py "$APK" > composition.md 2> composition-error.txt || \
+          DEBUG_APK=$(ls dist/morsecode-*-debug.apk 2>/dev/null | head -1)
+          python3 tools/apk-report.py "$APK" "$DEBUG_APK" > composition.md 2> composition-error.txt || \
             cat composition-error.txt >> composition.md
+          echo "" >> composition.md
+          echo "Debug APK: $(du -h "$DEBUG_APK" | cut -f1) · release APK: $(du -h "$APK" | cut -f1)" >> composition.md
           cat composition.md
           {
             echo 'composition<<COMPOSITION'

@@ -20,17 +20,26 @@ def mb(value: int) -> float:
     return value / (1024 * 1024)
 
 
+def entries(path):
+    with zipfile.ZipFile(path) as apk:
+        return list(apk.infolist())
+
+
 def main() -> None:
     if len(sys.argv) < 2 or not sys.argv[1]:
         print("### APK composition (§19.4)\n\nNo APK was found to measure.")
         return
     path = sys.argv[1]
-    with zipfile.ZipFile(path) as apk:
-        infos = list(apk.infolist())
-        names = [i.filename for i in infos]
-        total = sum(int(i.compress_size or 0) for i in infos)
+    # Presence is checked against the DEBUG apk: the release is minified and
+    # resource-shrunk, so class and resource names there are obfuscated and a
+    # name-based check reports false absences.
+    probe = sys.argv[2] if len(sys.argv) > 2 else path
+    infos = entries(path)
+    total = sum(int(i.compress_size or 0) for i in infos)
+    names = [i.filename for i in entries(probe)]
+    buckets = collections.Counter()
+    if True:
 
-        buckets = collections.Counter()
         for info in infos:
             name = info.filename
             if name.startswith("classes") and name.endswith(".dex"):
@@ -61,18 +70,27 @@ def main() -> None:
     print()
 
     # The specific absences §19.4 tells you to look for.
+    launcher = [n for n in names if "ic_launcher" in n]
+    densities = {d for d in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
+                 if any(d in n for n in launcher)}
     checks = [
-        ("Material Components", any("com/google/android/material" in n for n in names)
-         or any(n.startswith("res/") and "material" in n for n in names)),
-        ("Media3 / ExoPlayer", any("androidx/media3" in n for n in names)
-         or any("media3" in n for n in names)),
-        ("launcher icon, all densities",
-         sum(1 for n in names if "ic_launcher" in n) >= 4),
+        ("Material Components",
+         any("com/google/android/material" in n for n in names)
+         or any("material" in n.lower() for n in names)),
+        ("Media3 / ExoPlayer",
+         any("androidx/media3" in n for n in names) or any("media3" in n for n in names)
+         or any("exoplayer" in n.lower() for n in names)),
+        ("launcher: adaptive (anydpi-v26)", any("anydpi" in n for n in launcher)),
+        ("launcher: round", any("round" in n for n in launcher)),
+        ("launcher: every density (§19.2)", len(densities) >= 5),
         ("WebShare site packaged",
          all(any(n.endswith(asset) for n in names)
              for asset in ("web/index.html", "web/app.js", "web/styles.css"))),
     ]
-    print("| §19.4 check | Present |")
+    if launcher:
+        print("Launcher entries found: `%s`" % "`, `".join(sorted(launcher)[:12]))
+        print()
+    print("| §19.2 / §19.4 check | Present |")
     print("| --- | --- |")
     for label, present in checks:
         print("| %s | %s |" % (label, "yes" if present else "**NO**"))
