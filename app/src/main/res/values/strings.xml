@@ -89,6 +89,12 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_share">Share</string>
     <string name="action_delete">Delete</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_move">Move</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_compress">Compress</string>
+    <string name="action_properties">Properties</string>
     <string name="action_open_folder">Open folder</string>
     <string name="action_done">DONE</string>
 
@@ -192,6 +198,23 @@
     <string name="files_empty_music">No music yet</string>
     <string name="files_empty_apps">No apps listed yet</string>
     <string name="files_empty_files">No files here</string>
+    <string name="files_trash_title">Trash · %1$d items</string>
+    <string name="files_trash_empty">Trash is empty</string>
+    <string name="files_trash_auto_purge">Automatically deleted after 30 days</string>
+    <string name="files_restore">Restore</string>
+    <string name="files_restored">Restored %1$s</string>
+    <string name="files_delete_forever">Delete forever</string>
+    <string name="files_moved_to_trash">Moved %1$d items to Trash</string>
+    <string name="files_restored_count">Restored %1$d items</string>
+    <string name="files_trash_unavailable">Those items could not be moved to Trash</string>
+    <string name="files_action_one_local_file">Select one local file to rename</string>
+    <string name="files_action_local_files">Select local files to compress</string>
+    <string name="files_action_failed">That file action could not be completed</string>
+    <string name="files_renamed">File renamed</string>
+    <string name="files_moved_count">Moved %1$d items</string>
+    <string name="files_copied_count">Copied %1$d items</string>
+    <string name="files_compressed">Created %1$s</string>
+    <string name="files_properties_summary">%1$d items · %2$s</string>
     <string name="files_empty_action">Add a folder</string>
     <string name="files_sort_title">Sort by</string>
     <string name="files_select_all">Select all</string>
@@ -244,7 +267,12 @@
     <string name="settings_section_system">SYSTEM</string>
     <string name="settings_section_diagnostics">DIAGNOSTICS</string>
     <string name="settings_section_about">ABOUT</string>
-    <string name="settings_profile_subtitle">Tap to rename · Sunflower avatar</string>
+    <string name="settings_profile_subtitle">Tap to rename and choose avatar colour</string>
+    <string name="settings_profile_edit_cd">Edit profile for %1$s</string>
+    <string name="settings_profile_edit_title">Edit profile</string>
+    <string name="settings_profile_name_hint">Your device name</string>
+    <string name="settings_profile_avatar_colour">Avatar colour</string>
+    <string name="action_save">Save</string>
     <string name="settings_dark_mode">Dark mode</string>
     <string name="settings_dark_mode_sub">Sunflower hue</string>
     <string name="settings_follow_system">Follow system</string>
@@ -380,6 +408,10 @@
     <string name="player_share">Share</string>
     <string name="player_liked">Liked</string>
     <string name="player_queue">Queue</string>
+    <string name="player_queue_title">Queue · %1$d songs</string>
+    <string name="player_queue_empty">Your queue is empty</string>
+    <string name="player_queue_playing">Playing now</string>
+    <string name="player_queue_remove">Remove %1$s from queue</string>
     <string name="player_saved_toast">Saved to your playlist</string>
     <string name="player_up_next">UP NEXT · %1$d SONGS</string>
     <string name="player_up_next_empty">Nothing up next</string>
@@ -407,6 +439,7 @@
     <string name="transfer_pause_all">Pause all</string>
     <string name="transfer_resume_all">Resume all</string>
     <string name="transfer_peer_connected">%1$s · Connected · Phone · %2$s</string>
+    <string name="transfer_peer_broadcast">%1$s · Broadcast · Phone · %2$s</string>
     <string name="transfer_listening_title">Listening for senders</string>
     <string name="transfer_listening_body">Keep this screen open. Anyone on your network can send files — you can queue files to send back too.</string>
     <string name="transfer_row_broadcasting_as">BROADCASTING AS</string>
@@ -435,6 +468,7 @@
     <!-- ===== Content descriptions for the shell (§15.1) ===== -->
     <string name="cd_back">Back</string>
     <string name="cd_search">Search</string>
+    <string name="cd_open_trash">Open Trash</string>
     <string name="cd_sort">Sort</string>
     <string name="cd_view_toggle">Switch between grid and list</string>
     <string name="cd_overflow">More options</string>

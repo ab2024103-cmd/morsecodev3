@@ -156,15 +156,30 @@ class TransferFragment : Screen() {
         when (state) {
             is SessionState.Connected -> {
                 peerCard.visibility = View.VISIBLE
+                val transportName = when (state.transport) {
+                    app.morsecode.android.core.network.TransportKind.LAN -> getString(R.string.discovery_transport_lan)
+                    app.morsecode.android.core.network.TransportKind.NEARBY -> getString(R.string.badge_nearby)
+                    app.morsecode.android.core.network.TransportKind.WEB -> getString(R.string.badge_web)
+                }
                 peerCard.bind(
                     deviceId = state.peerId,
                     name = state.peerName,
-                    subtitle = getString(
-                        R.string.transfer_peer_connected,
-                        state.peerName,
-                        getString(R.string.discovery_transport_lan),
-                    ),
-                    badge = TransportBadge.LAN,
+                    subtitle = if (state.receivingBroadcast) {
+                        // §6.8.3 / §10.5: this phone only learns that the
+                        // sender is broadcasting, never who else receives it.
+                        getString(R.string.transfer_peer_broadcast, state.peerName, transportName)
+                    } else {
+                        getString(R.string.transfer_peer_connected, state.peerName, transportName)
+                    },
+                    badge = if (state.receivingBroadcast) {
+                        TransportBadge.FROM
+                    } else {
+                        when (state.transport) {
+                            app.morsecode.android.core.network.TransportKind.LAN -> TransportBadge.LAN
+                            app.morsecode.android.core.network.TransportKind.NEARBY -> TransportBadge.NEARBY
+                            app.morsecode.android.core.network.TransportKind.WEB -> TransportBadge.WEB
+                        }
+                    },
                 )
                 listeningPanel.visibility = View.GONE
             }

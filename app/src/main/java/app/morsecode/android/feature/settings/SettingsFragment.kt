@@ -2,7 +2,9 @@ package app.morsecode.android.feature.settings
 
 import android.view.Gravity
 import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import app.morsecode.android.BuildConfig
@@ -62,6 +64,9 @@ class SettingsFragment : Screen() {
     override fun onBuildScreen(column: LinearLayout) {
         val context = requireContext()
         val prefs = AppServices.prefs
+        // §14.1: the persisted background-kill warning is resolved only once
+        // the platform actually reports the exemption as granted.
+        if (isBatteryExempt()) prefs.hasBackgroundTransferDeathWarning = false
 
         toolbar.bind(getString(R.string.title_settings))
 
@@ -211,19 +216,23 @@ class SettingsFragment : Screen() {
         return mask == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
 
-    /** §6.13 profile card: accent letter avatar, device name, rename hint. */
+    /** §6.13 profile card: persisted display name plus independently chosen avatar colour. */
     private fun profileCard(): LinearLayout {
         val context = requireContext()
+        val prefs = AppServices.prefs
         val card = LinearLayout(context)
         card.orientation = LinearLayout.HORIZONTAL
         card.gravity = Gravity.CENTER_VERTICAL
-        card.background = Shapes.card(context)
         val pad = Shapes.dpInt(context, 14f)
         card.setPadding(pad, pad, pad, pad)
+        card.background = Shapes.pressable(context, Shapes.card(context), Shapes.card(context))
+        card.isClickable = true
+        card.isFocusable = true
 
-        val deviceName = android.os.Build.MODEL ?: getString(R.string.app_name)
+        val fallback = android.os.Build.MODEL ?: getString(R.string.app_name)
+        val deviceName = prefs.profileName.ifBlank { fallback }
         val avatar = AvatarView(context)
-        avatar.bind(deviceName, deviceName)
+        avatar.bindProfile(deviceName, prefs.profileAvatar.colorRes)
         val size = Shapes.dpInt(context, 48f)
         card.addView(avatar, LinearLayout.LayoutParams(size, size))
 
@@ -240,7 +249,71 @@ class SettingsFragment : Screen() {
         val textParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         textParams.leftMargin = Shapes.dpInt(context, 12f)
         card.addView(text, textParams)
+        card.contentDescription = getString(R.string.settings_profile_edit_cd, deviceName)
+        card.setOnClickListener { editProfile() }
         return card
+    }
+
+    /** Name and avatar colour are saved together and immediately re-rendered. */
+    private fun editProfile() {
+        val context = requireContext()
+        val prefs = AppServices.prefs
+        val body = LinearLayout(context)
+        body.orientation = LinearLayout.VERTICAL
+        val pad = Shapes.dpInt(context, 24f)
+        body.setPadding(pad, Shapes.dpInt(context, 8f), pad, 0)
+
+        val name = EditText(context)
+        name.hint = getString(R.string.settings_profile_name_hint)
+        name.setText(prefs.profileName)
+        name.setSingleLine(true)
+        body.addView(name, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        var selectedAvatar = prefs.profileAvatar
+        val swatches = LinkedHashMap<Accent, View>()
+        val colours = LinearLayout(context)
+        colours.orientation = LinearLayout.HORIZONTAL
+        colours.contentDescription = getString(R.string.settings_profile_avatar_colour)
+        fun repaintSwatches() {
+            for ((accent, swatch) in swatches) {
+                val shape = Shapes.circle(ContextCompat.getColor(context, accent.colorRes))
+                if (accent == selectedAvatar) {
+                    shape.setStroke(Shapes.dpInt(context, 2f), ThemeColors.resolve(context, R.attr.colorTextPrimary))
+                }
+                swatch.background = shape
+            }
+        }
+        for (accent in Accent.values()) {
+            val swatch = View(context)
+            swatches[accent] = swatch
+            swatch.isClickable = true
+            swatch.isFocusable = true
+            swatch.contentDescription = accent.key
+            swatch.setOnClickListener {
+                selectedAvatar = accent
+                repaintSwatches()
+            }
+            val side = Shapes.dpInt(context, 40f)
+            val swatchParams = LinearLayout.LayoutParams(side, side)
+            swatchParams.rightMargin = Shapes.dpInt(context, 12f)
+            swatchParams.topMargin = Shapes.dpInt(context, 16f)
+            colours.addView(swatch, swatchParams)
+        }
+        repaintSwatches()
+        body.addView(colours)
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.settings_profile_edit_title)
+            .setView(body)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_save) { _, _ ->
+                prefs.profileName = name.text?.toString().orEmpty()
+                prefs.profileAvatar = selectedAvatar
+                // Rebuild the current visible screen instead of requiring an
+                // app restart before the profile/advertised device name updates.
+                requireActivity().recreate()
+            }
+            .show()
     }
 
     /** §6.13 ACCENT COLOUR: five 40 dp circles, the selected one ringed. */

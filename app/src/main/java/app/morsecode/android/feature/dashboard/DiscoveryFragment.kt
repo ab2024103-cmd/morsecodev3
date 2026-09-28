@@ -310,7 +310,7 @@ class DiscoveryFragment : Screen() {
             for (peer in targets) {
                 // Each receiver gets its own consent prompt (§6.8.1); one
                 // refusal greys that row and the rest carry on (INV-B1).
-                val session = AppServices.connections.connect(peer)
+                val session = AppServices.connections.connect(peer, broadcasting = true)
                 if (session == null) {
                     AppServices.broadcastEngine.markRejected(peer.deviceId, peer.name, getString(R.string.discovery_rejected, peer.name))
                 } else {

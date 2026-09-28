@@ -58,6 +58,8 @@ class LanTransport(
         val name: String,
         val address: String,
         val protocolVersion: Int,
+        /** §10.5: receiver chrome shows Broadcast + [FROM] for this session. */
+        val broadcasting: Boolean,
     )
 
     private var server: ServerSocket? = null
@@ -98,7 +100,7 @@ class LanTransport(
      * → ACCEPT/REJECT handshake happens here, so a session handed back is one
      * the other phone has already consented to (§9.8).
      */
-    suspend fun connect(host: String, port: Int): LanSession? = withContext(Dispatchers.IO) {
+    suspend fun connect(host: String, port: Int, broadcasting: Boolean = false): LanSession? = withContext(Dispatchers.IO) {
         val socket = try {
             Socket().also {
                 it.tcpNoDelay = true
@@ -111,7 +113,7 @@ class LanTransport(
 
         val control = ControlChannel(socket, logStore)
         val reply = try {
-            control.request(Protocol.hello(deviceId, deviceName))
+            control.request(Protocol.hello(deviceId, deviceName, broadcasting = broadcasting))
         } catch (e: IOException) {
             control.close("handshake failed")
             return@withContext null
@@ -205,6 +207,7 @@ class LanTransport(
             name = hello.string("name") ?: address,
             address = address,
             protocolVersion = theirVersion,
+            broadcasting = hello.bool("broadcasting"),
         )
 
         // §9.8 / §6.16: nothing — no listing, no thumbnail, no byte — crosses
@@ -225,11 +228,12 @@ class LanTransport(
             dataPort = port,
             control = control,
             openContent = openContent,
+            peerIsBroadcasting = peer.broadcasting,
             logStore = logStore,
         )
         sessions[session.peerId] = session
         batchByPeer[session.peerId] = UUID.randomUUID().toString()
-        logStore?.i("TCP control :${boundPort} connected · peer=${peer.name}")
+        logStore?.i("TCP control :${boundPort} connected · peer=${peer.name} · broadcast=${peer.broadcasting}")
         pump(session, control)
         onSessionEstablished?.invoke(session)
     }

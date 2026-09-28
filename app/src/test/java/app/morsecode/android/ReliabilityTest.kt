@@ -167,6 +167,21 @@ class ReliabilityTest {
     }
 
     @Test
+    fun webThumbnailCacheEvictsGeneratedFilesPastItsByteBudget() {
+        val source = java.io.File(context.cacheDir, "thumbnail-budget-source.png")
+        android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.MAGENTA)
+            source.outputStream().use { compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            recycle()
+        }
+        val store = ThumbnailStore(context, maxBytes = 1L)
+        store.clear()
+        store.thumbnail(source)
+        assertTrue("§7.2 cache stays within its configured byte budget", store.cachedBytes() <= 1L)
+        source.delete()
+    }
+
+    @Test
     fun thumbnailDecodingPicksASampleSizeThatStillCoversTheBox() {
         val store = ThumbnailStore(context, maxPixels = 320)
         assertEquals(1, store.sampleSizeFor(320, 320, 320))

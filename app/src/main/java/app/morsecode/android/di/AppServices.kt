@@ -59,6 +59,11 @@ object AppServices {
         app.morsecode.android.core.media.Selection()
     }
 
+    /** §6.9 local, undoable Files trash; it purges entries older than 30 days. */
+    val trash: app.morsecode.android.core.media.TrashStore by lazy {
+        app.morsecode.android.core.media.TrashStore(appContext, logStore = logStore)
+    }
+
     /** §6.11 the music queue, process-scoped so playback outlives the screen. */
     val playbackQueue: app.morsecode.android.core.media.PlaybackQueue by lazy {
         app.morsecode.android.core.media.PlaybackQueue()
@@ -222,7 +227,9 @@ object AppServices {
         }
     }
 
-    val deviceName: String get() = android.os.Build.MODEL ?: Ids.APP_NAME
+    /** §6.13 profile rename is what peers and the listening screen announce. */
+    val deviceName: String
+        get() = prefs.profileName.takeIf { it.isNotBlank() } ?: (android.os.Build.MODEL ?: Ids.APP_NAME)
 
     /** §11.2 LAN transport: TCP :33456, one data connection per file. */
     val lanTransport: LanTransport by lazy {

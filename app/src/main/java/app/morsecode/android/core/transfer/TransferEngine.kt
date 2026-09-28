@@ -10,6 +10,7 @@ import app.morsecode.android.core.model.SessionState
 import app.morsecode.android.core.model.TransferFile
 import app.morsecode.android.core.model.TransferItem
 import app.morsecode.android.core.model.TransferState
+import app.morsecode.android.core.network.LanSession
 import app.morsecode.android.core.network.TransportSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -218,7 +219,12 @@ class TransferEngine(
 
     fun onSessionConnected(transportSession: TransportSession) {
         current = transportSession
-        sessionFlow.value = SessionState.Connected(transportSession.peerId, transportSession.peerName)
+        sessionFlow.value = SessionState.Connected(
+            peerId = transportSession.peerId,
+            peerName = transportSession.peerName,
+            transport = transportSession.transport,
+            receivingBroadcast = (transportSession as? LanSession)?.peerIsBroadcasting == true,
+        )
         emit(EngineEvent.PeerConnected(transportSession.peerId, transportSession.peerName))
         // INV-3: a new session re-queues everything the last one left paused.
         val requeued = queue.requeuePaused(userPaused.toSet())

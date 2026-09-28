@@ -27,6 +27,7 @@ const state = {
   queueIndex: 0,
   lightboxIndex: 0,
   uploads: new Map(),
+  events: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -803,7 +804,11 @@ function paintTray() {
 
 function listenForOffers() {
   if (!window.EventSource) return;
+  // One held stream per page session. The server keeps it open and pushes a
+  // frame as soon as an offer changes; this is not a timed snapshot poll.
+  if (state.events) state.events.close();
   const source = new EventSource(`/api/events?token=${state.token}`);
+  state.events = source;
   source.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
@@ -811,7 +816,14 @@ function listenForOffers() {
       paintTray();
     } catch (error) { /* a malformed frame must not break the page */ }
   };
-  source.onerror = () => { source.close(); setTimeout(listenForOffers, 3000); };
+  // Reconnect only after a real stream error (Wi-Fi switch, server stop), not
+  // on a clock while the stream is healthy.
+  source.onerror = () => {
+    if (state.events !== source) return;
+    source.close();
+    state.events = null;
+    setTimeout(listenForOffers, 1000);
+  };
 }
 
 async function acceptOffer(id) {

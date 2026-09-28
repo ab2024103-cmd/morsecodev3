@@ -73,6 +73,7 @@ class WebShareController(
 
     /** Stopped ONLY by explicit user action. Tokens die with the server (§7.1). */
     fun stop() {
+        server?.closeEventStreams()
         server?.stop()
         server = null
         runningFlow.value = false

@@ -172,7 +172,7 @@ class MusicPlayerFragment : Screen() {
         row.addView(likedButton)
 
         row.addView(textAction(context, getString(R.string.player_queue)) {
-            Ui.snackbar(requireActivity(), getString(R.string.stub_screen))
+            NowPlayingQueueSheet().show(parentFragmentManager, "now-playing-queue")
         })
         return row
     }

@@ -93,6 +93,7 @@ class ConnectionDoctorFragment : Screen() {
                 Permissions.nearby() + Permissions.mediaRead() + Permissions.notifications(),
             ),
             batteryExempt = isBatteryExempt(context),
+            backgroundTransferInterrupted = AppServices.prefs.hasBackgroundTransferDeathWarning,
             bluetoothOn = isBluetoothOn(context),
             locationServicesOn = isLocationOn(context),
             hotspotOn = false,

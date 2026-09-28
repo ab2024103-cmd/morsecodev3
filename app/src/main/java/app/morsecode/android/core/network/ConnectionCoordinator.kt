@@ -110,10 +110,12 @@ class ConnectionCoordinator(
      * Dials a peer. The consent handshake happens on the OTHER phone, so this
      * suspends until it answers or the dial fails (§6.16, §9.8).
      */
-    suspend fun connect(peer: DiscoveredPeer): TransportSession? {
+    suspend fun connect(peer: DiscoveredPeer, broadcasting: Boolean = false): TransportSession? {
         install()
         val session = when (peer.transport) {
-            TransportKind.LAN -> lan.connect(peer.address, peer.port)
+            TransportKind.LAN -> lan.connect(peer.address, peer.port, broadcasting)
+            // Nearby metadata travels before each STREAM, so the broadcast bit
+            // belongs to its session/metadata path rather than LAN's HELLO.
             TransportKind.NEARBY -> nearby.connect(peer.deviceId)
             TransportKind.WEB -> null
         }

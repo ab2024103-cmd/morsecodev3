@@ -28,14 +28,21 @@ class TransferService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private var observer: kotlinx.coroutines.Job? = null
+    private var stoppingNormally = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                stoppingNormally = true
+                AppServices.prefs.clearTransferMarker()
                 stopSelfSafely()
                 return START_NOT_STICKY
             }
             else -> {
+                // §14.1: leave durable evidence while active work is owned by
+                // this service. If an OEM kills us after the task moved to the
+                // background, the next process can explain *why* it warns.
+                AppServices.prefs.markTransferActive()
                 startForeground(NOTIFICATION_ID, buildNotification())
                 observeQueue()
             }
@@ -56,6 +63,21 @@ class TransferService : Service() {
                 // §6.13 "Notifications · Transfer progress": with the switch
                 // off the service keeps its (mandatory) foreground
                 // notification but stops publishing progress into it.
+                val active = items.any {
+                    it.state == app.morsecode.android.core.model.TransferState.IN_PROGRESS ||
+                        it.state == app.morsecode.android.core.model.TransferState.QUEUED
+                }
+                if (items.isNotEmpty() && !active) {
+                    // A completed, deliberately paused or cleanly ended batch
+                    // is not a background-shaped death. Clear the marker and
+                    // stop the foreground service instead of leaving a ghost
+                    // notification (§14.3, §14.5). A fresh connected session
+                    // has no rows yet, and must remain available for a batch.
+                    stoppingNormally = true
+                    AppServices.prefs.clearTransferMarker()
+                    stopSelfSafely()
+                    return@collect
+                }
                 if (!AppServices.prefs.notifications.value) return@collect
                 val manager = getSystemService(NOTIFICATION_SERVICE) as? android.app.NotificationManager
                 manager?.notify(NOTIFICATION_ID, buildNotification())
@@ -63,11 +85,22 @@ class TransferService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // This is the best platform signal that an active transfer has moved
+        // out of sight. Do not stop it — §3.7 says it survives minimising —
+        // but leave evidence in case the process subsequently vanishes.
+        AppServices.prefs.markTransferBackgrounded()
+        AppServices.logStore.i("Transfer moved to background")
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         observer?.cancel()
         observer = null
-        // Ending the service is not ending the session: the engine decides
-        // that, and only a real loss pauses the queue (INV-3).
+        // A normal End / terminal queue clears the marker above. A destructive
+        // process death often does not call onDestroy at all; if it does after
+        // onTaskRemoved we deliberately retain the marker for §14.1's warning.
+        if (stoppingNormally) AppServices.prefs.clearTransferMarker()
         AppServices.logStore.i("Transfer service stopped")
         super.onDestroy()
     }

@@ -46,6 +46,8 @@ object DoctorChecks {
         val playServices: PlayServices.Availability,
         val missingPermissions: List<String>,
         val batteryExempt: Boolean,
+        /** §14.1: persisted evidence of a background-shaped transfer death. */
+        val backgroundTransferInterrupted: Boolean = false,
         val bluetoothOn: Boolean,
         val locationServicesOn: Boolean,
         val hotspotOn: Boolean,
@@ -116,14 +118,23 @@ object DoctorChecks {
         )
 
         checks.add(
-            if (facts.batteryExempt) {
-                Check("battery", Status.OK, "Battery optimization off", "Transfers keep running in the background")
-            } else {
-                Check(
-                    "battery", Status.FAIL, "Battery optimization ON",
-                    "Transfers may pause in background",
-                    "✓ Request battery exemption",
-                )
+            when {
+                facts.batteryExempt ->
+                    Check("battery", Status.OK, "Battery optimization off", "Transfers keep running in the background")
+                facts.backgroundTransferInterrupted ->
+                    Check(
+                        "battery",
+                        Status.WARN,
+                        "Battery optimization ON",
+                        "A transfer ended after the app went to the background — request an exemption to help keep it alive",
+                        "✓ Request battery exemption",
+                    )
+                else ->
+                    Check(
+                        "battery", Status.FAIL, "Battery optimization ON",
+                        "Transfers may pause in background",
+                        "✓ Request battery exemption",
+                    )
             },
         )
 

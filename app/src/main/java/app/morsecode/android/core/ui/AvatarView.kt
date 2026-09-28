@@ -42,6 +42,14 @@ class AvatarView @JvmOverloads constructor(
         invalidate()
     }
 
+    /** §6.13's editable profile: letter avatar with an explicit accent choice. */
+    fun bindProfile(deviceName: String, colorRes: Int) {
+        letter = PeerPalette.letterFor(deviceName)
+        circlePaint.color = ContextCompat.getColor(context, colorRes)
+        contentDescription = context.getString(R.string.cd_peer_avatar, deviceName)
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         val size = Math.min(width, height).toFloat()
         val cx = width / 2f

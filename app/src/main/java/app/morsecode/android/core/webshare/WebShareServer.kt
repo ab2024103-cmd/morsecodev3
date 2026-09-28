@@ -57,6 +57,15 @@ class WebShareServer(
     private val thumbnails = ThumbnailStore(appContext)
     private val uploads = ConcurrentHashMap<String, UploadState>()
 
+    /** A held SSE stream, not the former two-second snapshot poll (§7.8). */
+    private val sse = SseHub { sessionId -> eventsPayload(sessionId).toString() }
+
+    init {
+        // A phone-originated offer reaches its owning browser immediately. The
+        // hub scopes each write by session id, so offers cannot leak sideways.
+        offers.addListener { sessionId -> sse.publish(sessionId) }
+    }
+
     private class UploadState(val name: String, val target: File) {
         @Volatile
         var receivedChunks: Int = 0
@@ -92,9 +101,9 @@ class WebShareServer(
         uri == "/upload" -> guarded(session) { upload(session) }
         uri == "/api/upload-status" -> guarded(session) { uploadStatus(session) }
         uri == "/api/events" -> guarded(session) { web -> events(web) }
-        uri == "/api/push-accept" -> guarded(session) { pushAccept(session) }
-        uri == "/api/push-dismiss" -> guarded(session) { pushDismiss(session) }
-        uri == "/push-download" -> guarded(session) { pushDownload(session) }
+        uri == "/api/push-accept" -> guarded(session) { web -> pushAccept(session, web) }
+        uri == "/api/push-dismiss" -> guarded(session) { web -> pushDismiss(session, web) }
+        uri == "/push-download" -> guarded(session) { web -> pushDownload(session, web) }
         else -> noStore(newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_JSON, """{"error":"not found"}"""))
     }
 
@@ -284,7 +293,12 @@ class WebShareServer(
         return streamFile(http, file, mimeOf(file))
     }
 
-    private fun streamFile(http: IHTTPSession, file: File, mime: String): Response {
+    private fun streamFile(
+        http: IHTTPSession,
+        file: File,
+        mime: String,
+        onFullyRead: ((start: Long, length: Long) -> Unit)? = null,
+    ): Response {
         val length = file.length()
         val rangeHeader = http.headers["range"]
         val span = HttpRange.parse(rangeHeader, length)
@@ -300,12 +314,15 @@ class WebShareServer(
         }
 
         return if (span == null) {
-            val response = newFixedLengthResponse(Response.Status.OK, mime, FileInputStream(file), length)
+            val raw = FileInputStream(file)
+            val stream = trackRead(raw, start = 0, length = length, onFullyRead = onFullyRead)
+            val response = newFixedLengthResponse(Response.Status.OK, mime, stream, length)
             response.addHeader("Accept-Ranges", "bytes")
             noStore(response)
         } else {
-            val stream = FileInputStream(file)
-            stream.skip(span.start)
+            val raw = FileInputStream(file)
+            raw.skip(span.start)
+            val stream = trackRead(raw, span.start, span.length, onFullyRead)
             val response = newFixedLengthResponse(
                 Response.Status.PARTIAL_CONTENT,
                 mime,
@@ -315,6 +332,53 @@ class WebShareServer(
             response.addHeader("Accept-Ranges", "bytes")
             response.addHeader("Content-Range", span.contentRange)
             noStore(response)
+        }
+    }
+
+    /**
+     * Fires [onFullyRead] only after the response consumer read exactly the
+     * advertised span. Closing early deliberately does nothing: that browser
+     * did not receive the rest of the offered file.
+     */
+    private fun trackRead(
+        source: InputStream,
+        start: Long,
+        length: Long,
+        onFullyRead: ((start: Long, length: Long) -> Unit)?,
+    ): InputStream {
+        if (onFullyRead == null) return source
+        return object : java.io.FilterInputStream(source) {
+            private var readBytes = 0L
+            private var reported = false
+
+            override fun read(): Int {
+                val value = super.read()
+                if (value >= 0) consumed(1) else finished()
+                return value
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, count: Int): Int {
+                val value = super.read(buffer, offset, count)
+                if (value > 0) consumed(value) else if (value < 0) finished()
+                return value
+            }
+
+            override fun close() {
+                finished()
+                super.close()
+            }
+
+            private fun consumed(count: Int) {
+                readBytes += count
+                if (readBytes >= length) finished()
+            }
+
+            private fun finished() {
+                if (!reported && readBytes >= length) {
+                    reported = true
+                    onFullyRead(start, length)
+                }
+            }
         }
     }
 
@@ -431,57 +495,74 @@ class WebShareServer(
     }
 
     /**
-     * §7.2 / §7.8 SSE: push offers, consent changes and counts. The browser
-     * reconnects on every `retry`, so each response is a snapshot of what is
-     * pending for THIS session — no shared stream, no cross-session leak.
+     * §7.2 / §7.8 SSE: one held, chunked stream per accepted browser. The
+     * initial snapshot reaches the client immediately and later offer changes
+     * are pushed by [PushOffers], without a reconnect timer masquerading as
+     * Server-Sent Events.
      */
     private fun events(session: WebSessions.Session): Response {
-        val pending = JSONArray()
-        for (offer in offers.pendingFor(session.id)) pending.put(offer.json())
-        val payload = JSONObject()
-            .put("session", session.id)
-            .put("offers", pending)
-            .put("counts", JSONObject().put("stale", false))
-        val body = "retry: 2000\n\ndata: $payload\n\n"
-        val response = newFixedLengthResponse(Response.Status.OK, "text/event-stream", body)
+        val response = newChunkedResponse(Response.Status.OK, "text/event-stream", sse.open(session.id))
         response.addHeader("Connection", "keep-alive")
+        response.addHeader("X-Accel-Buffering", "no")
         return noStore(response)
     }
 
-    /** §7.8: the browser pressed [Download] on an incoming card. */
-    private fun pushAccept(http: IHTTPSession): Response {
+    private fun eventsPayload(sessionId: String): JSONObject {
+        val pending = JSONArray()
+        for (offer in offers.pendingFor(sessionId)) pending.put(offer.json())
+        return JSONObject()
+            .put("session", sessionId)
+            .put("offers", pending)
+            .put("counts", JSONObject().put("stale", false))
+    }
+
+    /** §7.8: the browser pressed [Download] on its own incoming card. */
+    private fun pushAccept(http: IHTTPSession, web: WebSessions.Session): Response {
         val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
+        val pending = offers.get(id) ?: return notFound()
+        if (pending.sessionId != web.id) return notFound()
         val offer = offers.accepted(id) ?: return notFound()
         return json(offer.json().put("url", "/push-download?offer=$id"))
     }
 
     /** §7.8: [Dismiss] cancels the offer — the phone sees Cancelled, not Failed. */
-    private fun pushDismiss(http: IHTTPSession): Response {
+    private fun pushDismiss(http: IHTTPSession, web: WebSessions.Session): Response {
         val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
+        val pending = offers.get(id) ?: return notFound()
+        if (pending.sessionId != web.id) return notFound()
         offers.dismissed(id) ?: return notFound()
         return json(JSONObject().put("ok", true))
     }
 
     /**
      * §7.8: "accepting downloads through the same Range-capable endpoint".
-     * The send completes when the LAST byte has gone out, not when the offer
-     * was accepted — a download the browser abandons must not read as sent.
+     * The stream wrapper reports only bytes NanoHTTPD really reads. An offer is
+     * complete when those reported spans cover the full file, so a partial
+     * ranged download cannot turn into a false Completed row.
      */
-    private fun pushDownload(http: IHTTPSession): Response {
+    private fun pushDownload(http: IHTTPSession, web: WebSessions.Session): Response {
         val id = http.parameters["offer"]?.firstOrNull() ?: return badRequest("offer required")
         val offer = offers.get(id) ?: return notFound()
+        if (offer.sessionId != web.id || offer.state != PushOffers.State.DOWNLOADING) return notFound()
         val file = File(offer.path)
         if (!file.exists()) return notFound()
+        // Empty files have complete [0, 0) coverage as soon as this response
+        // is created; there is no body read from which the wrapper can infer it.
+        if (file.length() == 0L) offers.delivered(id)
 
-        val response = streamFile(http, file, mimeOf(file))
-        val whole = http.headers["range"] == null ||
-            HttpRange.parse(http.headers["range"], file.length())?.length == file.length()
-        if (whole) offers.delivered(id)
+        val response = streamFile(http, file, mimeOf(file)) { start, length ->
+            offers.downloadedRange(id, start, length)
+        }
         response.addHeader("Content-Disposition", "attachment; filename=\"${offer.name}\"")
         return response
     }
 
     // ----- Plumbing ---------------------------------------------------------
+
+    /** Called only by the explicit WebShare Stop path (§7.1 INV-4). */
+    fun closeEventStreams() {
+        sse.closeAll()
+    }
 
     private fun asset(name: String, mime: String): Response {
         val bytes = assets.read(name) ?: return notFound()

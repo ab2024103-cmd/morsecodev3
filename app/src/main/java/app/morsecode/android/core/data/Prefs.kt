@@ -125,6 +125,62 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_BATTERY_PROMPT, false)
         set(value) = prefs.edit().putBoolean(KEY_BATTERY_PROMPT, value).apply()
 
+    // ----- §6.13 profile ---------------------------------------------------
+
+    /** Blank means the hardware model is still the public device name. */
+    var profileName: String
+        get() = prefs.getString(KEY_PROFILE_NAME, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_PROFILE_NAME, value.trim()).apply()
+
+    /** The profile avatar follows one of the five §4.4 swatches. */
+    var profileAvatar: Accent
+        get() = Accent.fromKey(prefs.getString(KEY_PROFILE_AVATAR, null))
+        set(value) = prefs.edit().putString(KEY_PROFILE_AVATAR, value.key).apply()
+
+    // ----- §14.1 background-kill evidence ---------------------------------
+
+    /**
+     * A transfer service writes this before it can outlive the activity. It is
+     * cleared only after an ordinary terminal/pause stop, never from a process
+     * death path that may not get `onDestroy()`.
+     */
+    fun markTransferActive() {
+        prefs.edit().putBoolean(KEY_TRANSFER_ACTIVE, true).apply()
+    }
+
+    /** `onTaskRemoved()` records that the active transfer was backgrounded. */
+    fun markTransferBackgrounded() {
+        if (prefs.getBoolean(KEY_TRANSFER_ACTIVE, false)) {
+            prefs.edit().putBoolean(KEY_TRANSFER_BACKGROUNDED, true).apply()
+        }
+    }
+
+    /** Normal terminal, user-pause and clean End paths clear the marker. */
+    fun clearTransferMarker() {
+        prefs.edit()
+            .remove(KEY_TRANSFER_ACTIVE)
+            .remove(KEY_TRANSFER_BACKGROUNDED)
+            .apply()
+    }
+
+    /**
+     * Called once at process start. A marker left by a backgrounded active
+     * transfer is evidence consistent with an OEM/background kill; retain the
+     * warning until the user grants the exemption, so the Doctor can keep
+     * surfacing it as §14.1 requires.
+     */
+    fun recordInterruptedBackgroundTransferAtLaunch(): Boolean {
+        val interrupted = prefs.getBoolean(KEY_TRANSFER_ACTIVE, false) &&
+            prefs.getBoolean(KEY_TRANSFER_BACKGROUNDED, false)
+        if (interrupted) prefs.edit().putBoolean(KEY_BACKGROUND_DEATH_WARNING, true).apply()
+        clearTransferMarker()
+        return interrupted
+    }
+
+    var hasBackgroundTransferDeathWarning: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_DEATH_WARNING, false)
+        set(value) = prefs.edit().putBoolean(KEY_BACKGROUND_DEATH_WARNING, value).apply()
+
     /** §4.12g: one-time hints, dismissed for good once the user closes them. */
     fun isTipDismissed(id: String): Boolean = prefs.getBoolean(KEY_TIP_PREFIX + id, false)
 
@@ -152,6 +208,11 @@ class Prefs(context: Context) {
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_TIP_PREFIX = "tip."
         private const val KEY_BATTERY_PROMPT = "battery_prompt_shown"
+        private const val KEY_PROFILE_NAME = "profile_name"
+        private const val KEY_PROFILE_AVATAR = "profile_avatar"
+        private const val KEY_TRANSFER_ACTIVE = "transfer_active_marker"
+        private const val KEY_TRANSFER_BACKGROUNDED = "transfer_backgrounded_marker"
+        private const val KEY_BACKGROUND_DEATH_WARNING = "transfer_background_death_warning"
         private const val KEY_SOUNDS = "sounds"
         private const val KEY_NOTIFICATIONS = "notifications"
         private const val KEY_CRASH_REPORTS = "crash_reports"

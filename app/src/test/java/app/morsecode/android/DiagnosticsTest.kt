@@ -112,6 +112,31 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun profileNameAndAvatarChoicePersistAsSettingsData() {
+        val prefs = Prefs(context)
+        prefs.profileName = "Morse Test Phone"
+        prefs.profileAvatar = app.morsecode.android.core.util.Accent.VIOLET
+        assertEquals("Morse Test Phone", prefs.profileName)
+        assertEquals(app.morsecode.android.core.util.Accent.VIOLET, prefs.profileAvatar)
+        prefs.profileName = ""
+        prefs.profileAvatar = app.morsecode.android.core.util.Accent.SUNFLOWER
+    }
+
+    @Test
+    fun backgroundedActiveTransferMarkerSurvivesLaunchAsDoctorEvidence() {
+        val prefs = Prefs(context)
+        prefs.clearTransferMarker()
+        prefs.hasBackgroundTransferDeathWarning = false
+        prefs.markTransferActive()
+        prefs.markTransferBackgrounded()
+
+        assertTrue(prefs.recordInterruptedBackgroundTransferAtLaunch())
+        assertTrue(prefs.hasBackgroundTransferDeathWarning)
+        assertFalse("launch consumes the transient active marker", prefs.recordInterruptedBackgroundTransferAtLaunch())
+        prefs.hasBackgroundTransferDeathWarning = false
+    }
+
+    @Test
     fun changingTheConflictSettingAffectsTheNextBatchNotThePreviousChoice() {
         val policy = Conflicts.BatchPolicy(Conflicts.Policy.RENAME)
         policy.applyToAll("batch-1", Conflicts.Policy.SKIP)
@@ -231,6 +256,7 @@ class DiagnosticsTest {
         play: PlayServices.Availability = PlayServices.Availability.AVAILABLE,
         missing: List<String> = emptyList(),
         battery: Boolean = true,
+        backgroundTransferInterrupted: Boolean = false,
         bluetooth: Boolean = true,
         location: Boolean = true,
         hotspot: Boolean = false,
@@ -245,6 +271,7 @@ class DiagnosticsTest {
         playServices = play,
         missingPermissions = missing,
         batteryExempt = battery,
+        backgroundTransferInterrupted = backgroundTransferInterrupted,
         bluetoothOn = bluetooth,
         locationServicesOn = location,
         hotspotOn = hotspot,
@@ -273,6 +300,16 @@ class DiagnosticsTest {
         assertEquals("Transfers may pause in background", battery.detail)
         assertEquals("✓ Request battery exemption", battery.fix)
         assertEquals(DoctorChecks.Status.FAIL, DoctorChecks.summarise(checks))
+    }
+
+    @Test
+    fun aPersistedBackgroundKillShapeSurfacesTheSpecificBatteryWarning() {
+        val battery = DoctorChecks.evaluate(
+            facts(battery = false, backgroundTransferInterrupted = true),
+        ).first { it.id == "battery" }
+        assertEquals(DoctorChecks.Status.WARN, battery.status)
+        assertTrue(battery.detail.contains("interrupted"))
+        assertEquals("✓ Request battery exemption", battery.fix)
     }
 
     @Test

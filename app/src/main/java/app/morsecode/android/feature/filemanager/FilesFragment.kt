@@ -76,13 +76,35 @@ class FilesFragment : Screen() {
     private lateinit var sortEcho: AppCompatTextView
     private lateinit var list: RecyclerView
     private lateinit var emptyHolder: FrameLayout
-    private lateinit var selectionBar: LinearLayout
+    private lateinit var selectionBar: android.widget.HorizontalScrollView
+    private lateinit var selectionActions: LinearLayout
     private lateinit var addressBar: LinearLayout
 
     private val selection get() = AppServices.selection
     private var order = SortOrder()
     private var currentPath: String? = null
     private var lastItems: List<MediaItem> = emptyList()
+    private var pendingTreeAction: PendingTreeAction? = null
+
+    private data class PendingTreeAction(
+        val move: Boolean,
+        val entries: List<Selection.Entry>,
+    )
+
+    private val destinationPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { destination ->
+        val action = pendingTreeAction
+        pendingTreeAction = null
+        if (destination == null || action == null) return@registerForActivityResult
+        runCatching {
+            requireContext().contentResolver.takePersistableUriPermission(
+                destination,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        copySelectionToTree(destination, action)
+    }
 
     private val gridAdapter by lazy {
         MediaGridAdapter(
@@ -116,6 +138,9 @@ class FilesFragment : Screen() {
         val context = requireContext()
 
         toolbar.bind(getString(R.string.title_files))
+        toolbar.addAction(R.drawable.ic_trash, R.string.cd_open_trash) {
+            TrashSheet().show(parentFragmentManager, "files-trash")
+        }
         toolbar.addAction(R.drawable.ic_search, R.string.cd_search) { stub() }
         toolbar.addAction(R.drawable.ic_sort, R.string.cd_sort) { showSortSheet() }
         toolbar.addAction(R.drawable.ic_view_grid, R.string.cd_view_toggle) { stub() }
@@ -417,14 +442,23 @@ class FilesFragment : Screen() {
 
     // ----- Selection --------------------------------------------------------
 
-    private fun buildSelectionBar(context: Context): LinearLayout {
-        val bar = LinearLayout(context)
-        bar.orientation = LinearLayout.HORIZONTAL
-        bar.gravity = Gravity.CENTER_VERTICAL
+    private fun buildSelectionBar(context: Context): android.widget.HorizontalScrollView {
+        val bar = android.widget.HorizontalScrollView(context)
+        bar.isHorizontalScrollBarEnabled = false
         bar.visibility = View.GONE
         bar.background = Shapes.card(context, 12f)
         val pad = Shapes.dpInt(context, 8f)
         bar.setPadding(pad, pad, pad, pad)
+        selectionActions = LinearLayout(context)
+        selectionActions.orientation = LinearLayout.HORIZONTAL
+        selectionActions.gravity = Gravity.CENTER_VERTICAL
+        bar.addView(
+            selectionActions,
+            android.widget.HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
         return bar
     }
 
@@ -438,7 +472,7 @@ class FilesFragment : Screen() {
 
     private fun renderSelectionBar() {
         val context = context ?: return
-        selectionBar.removeAllViews()
+        selectionActions.removeAllViews()
         if (!selection.isActive) {
             selectionBar.visibility = View.GONE
             return
@@ -449,17 +483,37 @@ class FilesFragment : Screen() {
             context,
             getString(R.string.files_send_selection, selection.count, Fmt.size(selection.totalBytes)),
         ) { sendSelection() }
-        selectionBar.addView(send, cell(context, weight = 2f))
+        selectionActions.addView(send, cell(context))
 
-        selectionBar.addView(
+        selectionActions.addView(
             Buttons.outlined(context, getString(R.string.action_share)) { shareSelection() },
             cell(context),
         )
-        selectionBar.addView(
-            Buttons.outlined(context, getString(R.string.action_delete)) { stub() },
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_delete)) { deleteSelection() },
             cell(context),
         )
-        selectionBar.addView(
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_rename)) { renameSelection() },
+            cell(context),
+        )
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_move)) { moveOrCopySelection(move = true) },
+            cell(context),
+        )
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_copy)) { moveOrCopySelection(move = false) },
+            cell(context),
+        )
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_compress)) { compressSelection() },
+            cell(context),
+        )
+        selectionActions.addView(
+            Buttons.outlined(context, getString(R.string.action_properties)) { showProperties() },
+            cell(context),
+        )
+        selectionActions.addView(
             Buttons.outlined(context, getString(R.string.action_cancel)) { selection.clear() },
             cell(context),
         )
@@ -528,6 +582,221 @@ class FilesFragment : Screen() {
         }
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         startActivity(Intent.createChooser(intent, getString(R.string.action_share)))
+    }
+
+    /** §6.9 Trash: only claim Undo after a recoverable local filesystem move succeeded. */
+    private fun deleteSelection() {
+        val entries = selection.snapshot()
+        if (entries.isEmpty()) return
+        val moved = ArrayList<app.morsecode.android.core.media.TrashStore.Entry>()
+        for (entry in entries) {
+            val path = entry.path ?: continue
+            AppServices.trash.trash(path, entry.displayName)?.let { moved.add(it) }
+        }
+        selection.clear()
+        renderTab(tabs.selectedIndex())
+        if (moved.isEmpty()) {
+            Ui.snackbar(requireActivity(), getString(R.string.files_trash_unavailable))
+            return
+        }
+        Ui.snackbar(
+            requireActivity(),
+            getString(R.string.files_moved_to_trash, moved.size),
+            getString(R.string.action_undo),
+            onAction = {
+                var restored = 0
+                for (record in moved) if (AppServices.trash.restore(record.id) != null) restored++
+                renderTab(tabs.selectedIndex())
+                Ui.snackbar(requireActivity(), getString(R.string.files_restored_count, restored))
+            },
+        )
+    }
+
+    /** Rename is intentionally limited to one local file so no selected item is silently skipped. */
+    private fun renameSelection() {
+        val entry = selection.snapshot().singleOrNull()
+        val source = entry?.path?.let(::java.io.File)
+        if (entry == null || source == null || !source.exists()) {
+            Ui.snackbar(requireActivity(), getString(R.string.files_action_one_local_file))
+            return
+        }
+        val input = android.widget.EditText(requireContext())
+        input.setText(source.name)
+        input.selectAll()
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_rename)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_save) { _, _ ->
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.isEmpty() || name.contains(java.io.File.separatorChar)) return@setPositiveButton
+                val target = java.io.File(source.parentFile, name)
+                if (source.renameTo(target)) {
+                    selection.clear()
+                    renderTab(tabs.selectedIndex())
+                    Ui.snackbar(requireActivity(), getString(R.string.files_renamed))
+                } else {
+                    Ui.snackbar(requireActivity(), getString(R.string.files_action_failed))
+                }
+            }
+            .show()
+    }
+
+    /** Uses Android's directory picker, then streams each selected local/content item to it. */
+    private fun moveOrCopySelection(move: Boolean) {
+        val entries = selection.snapshot()
+        if (entries.isEmpty()) return
+        pendingTreeAction = PendingTreeAction(move, entries)
+        destinationPicker.launch(null)
+    }
+
+    private fun copySelectionToTree(tree: android.net.Uri, action: PendingTreeAction) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val resolver = requireContext().contentResolver
+            var completed = 0
+            for (entry in action.entries) {
+                val copied = try {
+                    copyEntryToTree(tree, entry)
+                } catch (error: Exception) {
+                    false
+                }
+                if (!copied) continue
+                completed++
+                if (action.move) entry.path?.let { deleteLocalTree(java.io.File(it)) }
+            }
+            selection.clear()
+            renderTab(tabs.selectedIndex())
+            Ui.snackbar(
+                requireActivity(),
+                getString(if (action.move) R.string.files_moved_count else R.string.files_copied_count, completed),
+            )
+        }
+    }
+
+    /** Copies a selected file or a local folder tree into an Android document tree. */
+    private fun copyEntryToTree(parent: android.net.Uri, entry: Selection.Entry): Boolean {
+        val resolver = requireContext().contentResolver
+        if (!entry.isDirectory) {
+            val document = android.provider.DocumentsContract.createDocument(
+                resolver,
+                parent,
+                "application/octet-stream",
+                entry.displayName,
+            ) ?: return false
+            val input = entry.uri?.let { resolver.openInputStream(it) }
+                ?: entry.path?.let { runCatching { java.io.FileInputStream(it) }.getOrNull() }
+                ?: return false
+            val output = resolver.openOutputStream(document)
+            if (output == null) {
+                input.close()
+                return false
+            }
+            return runCatching {
+                input.use { source -> output.use { target -> source.copyTo(target) } }
+            }.isSuccess
+        }
+
+        val source = entry.path?.let(::java.io.File) ?: return false
+        val destination = android.provider.DocumentsContract.createDocument(
+            resolver,
+            parent,
+            android.provider.DocumentsContract.Document.MIME_TYPE_DIR,
+            entry.displayName,
+        ) ?: return false
+        return copyDirectoryToTree(source, destination)
+    }
+
+    private fun copyDirectoryToTree(source: java.io.File, parent: android.net.Uri): Boolean {
+        if (!source.isDirectory) return false
+        val children = source.listFiles() ?: return false
+        for (child in children) {
+            val entry = Selection.Entry(
+                key = "copy:${child.absolutePath}",
+                displayName = child.name,
+                sizeBytes = child.length(),
+                type = FileType.UNKNOWN,
+                isDirectory = child.isDirectory,
+                path = child.absolutePath,
+                uri = null,
+            )
+            if (!copyEntryToTree(parent, entry)) return false
+        }
+        return true
+    }
+
+    private fun deleteLocalTree(file: java.io.File): Boolean {
+        if (file.isDirectory) file.listFiles()?.forEach { deleteLocalTree(it) }
+        return !file.exists() || file.delete()
+    }
+
+    /** Compresses selected files and folder trees into a ZIP beside the first local item. */
+    private fun compressSelection() {
+        val entries = selection.snapshot()
+        val firstPath = entries.firstOrNull { it.path != null }?.path ?: run {
+            Ui.snackbar(requireActivity(), getString(R.string.files_action_local_files))
+            return
+        }
+        val output = java.io.File(java.io.File(firstPath).parentFile, "Morsecode selection.zip")
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ok = runCatching {
+                java.util.zip.ZipOutputStream(java.io.FileOutputStream(output)).use { zip ->
+                    for (entry in entries) zipEntry(zip, entry, entry.displayName)
+                }
+            }.isSuccess
+            if (ok) {
+                selection.clear()
+                renderTab(tabs.selectedIndex())
+                Ui.snackbar(requireActivity(), getString(R.string.files_compressed, output.name))
+            } else {
+                output.delete()
+                Ui.snackbar(requireActivity(), getString(R.string.files_action_failed))
+            }
+        }
+    }
+
+    private fun zipEntry(
+        zip: java.util.zip.ZipOutputStream,
+        entry: Selection.Entry,
+        name: String,
+    ) {
+        if (entry.isDirectory) {
+            val directory = entry.path?.let(::java.io.File) ?: return
+            zip.putNextEntry(java.util.zip.ZipEntry("$name/"))
+            zip.closeEntry()
+            for (child in directory.listFiles().orEmpty()) {
+                zipEntry(
+                    zip,
+                    Selection.Entry(
+                        key = "zip:${child.absolutePath}",
+                        displayName = child.name,
+                        sizeBytes = child.length(),
+                        type = FileType.UNKNOWN,
+                        isDirectory = child.isDirectory,
+                        path = child.absolutePath,
+                        uri = null,
+                    ),
+                    "$name/${child.name}",
+                )
+            }
+            return
+        }
+        zip.putNextEntry(java.util.zip.ZipEntry(name))
+        val input = entry.uri?.let { requireContext().contentResolver.openInputStream(it) }
+            ?: entry.path?.let { java.io.FileInputStream(it) }
+        input?.use { it.copyTo(zip) }
+        zip.closeEntry()
+    }
+
+    private fun showProperties() {
+        val entries = selection.snapshot()
+        if (entries.isEmpty()) return
+        val names = entries.take(3).joinToString("\n") { it.displayName }
+        val summary = getString(R.string.files_properties_summary, entries.size, Fmt.size(entries.sumOf { it.sizeBytes }))
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_properties)
+            .setMessage("$summary\n\n$names")
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     // ----- Opening ----------------------------------------------------------
@@ -620,8 +889,12 @@ class FilesFragment : Screen() {
         },
     )
 
-    private fun cell(context: Context, weight: Float = 1f): LinearLayout.LayoutParams {
-        val params = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight)
+    /** The long-press toolbar scrolls horizontally instead of crushing nine labels. */
+    private fun cell(context: Context): LinearLayout.LayoutParams {
+        val params = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
         params.marginEnd = Shapes.dpInt(context, 6f)
         return params
     }

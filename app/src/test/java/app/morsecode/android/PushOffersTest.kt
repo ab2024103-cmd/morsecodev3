@@ -49,6 +49,42 @@ class PushOffersTest {
     }
 
     @Test
+    fun partialAndOverlappingRangesDoNotCompleteUntilCoverageReachesTheEnd() = runBlocking {
+        val registry = offers()
+        val (offer, waiter) = registry.offer("s1", "f1", "movie.mp4", "/tmp/movie.mp4", 100)
+        registry.accepted(offer.id)
+
+        registry.downloadedRange(offer.id, start = 50, length = 25)
+        registry.downloadedRange(offer.id, start = 0, length = 50)
+        registry.downloadedRange(offer.id, start = 20, length = 30) // duplicate coverage
+        assertFalse("the final 25 bytes were never read", waiter.isCompleted)
+        assertEquals(PushOffers.State.DOWNLOADING, registry.get(offer.id)?.state)
+
+        registry.downloadedRange(offer.id, start = 75, length = 25)
+        assertTrue(withTimeout(1000) { waiter.await() } is SendResult.Completed)
+    }
+
+    @Test
+    fun aZeroByteAcceptedOfferCompletesOnItsEmptyResponse() = runBlocking {
+        val registry = offers()
+        val (offer, waiter) = registry.offer("s1", "empty", "empty.txt", "/tmp/empty.txt", 0)
+        registry.accepted(offer.id)
+        registry.downloadedRange(offer.id, start = 0, length = 0)
+        assertTrue(withTimeout(1000) { waiter.await() } is SendResult.Completed)
+    }
+
+    @Test
+    fun offerStateChangesNotifyOnlyTheOwningSseSession() {
+        val registry = offers()
+        val events = ArrayList<String>()
+        registry.addListener { events.add(it) }
+        val (offer, _) = registry.offer("s1", "f1", "a.pdf", "/tmp/a.pdf", 10)
+        registry.accepted(offer.id)
+        registry.dismissed(offer.id)
+        assertEquals(listOf("s1", "s1", "s1"), events)
+    }
+
+    @Test
     fun dismissIsCancelledNotFailed() = runBlocking {
         val registry = offers()
         val (offer, waiter) = registry.offer("s1", "f1", "a.pdf", "/tmp/a.pdf", 1000)

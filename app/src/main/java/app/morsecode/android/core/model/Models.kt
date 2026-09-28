@@ -224,7 +224,13 @@ sealed class EngineEvent {
  */
 sealed class SessionState {
     object NeverConnected : SessionState()
-    data class Connected(val peerId: String, val peerName: String) : SessionState()
+    data class Connected(
+        val peerId: String,
+        val peerName: String,
+        val transport: app.morsecode.android.core.network.TransportKind = app.morsecode.android.core.network.TransportKind.LAN,
+        /** §10.5: a receiver renders Broadcast + [FROM] only when HELLO said so. */
+        val receivingBroadcast: Boolean = false,
+    ) : SessionState()
     data class Closed(val peerId: String, val peerName: String, val reason: String) : SessionState()
 }
 

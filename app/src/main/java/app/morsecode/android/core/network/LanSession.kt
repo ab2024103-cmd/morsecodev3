@@ -37,9 +37,11 @@ class LanSession(
     private val dataPort: Int,
     private val control: ControlChannel,
     private val openContent: (TransferItem) -> InputStream?,
+    /** True when the incoming HELLO declared a §10 broadcast. */
+    val peerIsBroadcasting: Boolean = false,
     private val logStore: LogStore? = null,
     private val connectTimeoutMs: Int = 8_000,
-) : TransportSession {
+) : TransportSession, ChunkWindowSession {
 
     override val transport: TransportKind = TransportKind.LAN
 
@@ -47,6 +49,14 @@ class LanSession(
 
     @Volatile
     private var closed = false
+
+    @Volatile
+    private var chunkScheduler: RoundRobinChunkScheduler? = null
+
+    /** BroadcastEngine installs this only for the independent LAN data streams. */
+    override fun setChunkScheduler(scheduler: RoundRobinChunkScheduler?) {
+        chunkScheduler = scheduler
+    }
 
     private val pausedFiles: MutableSet<String> = Collections.synchronizedSet(HashSet())
     private val cancelledFiles: MutableSet<String> = Collections.synchronizedSet(HashSet())
@@ -130,7 +140,18 @@ class LanSession(
                     val read = stream.read(buffer)
                     if (read <= 0) break
 
-                    Framing.writeFrame(output, seq, buffer, read)
+                    // §10.2: broadcast workers open independent source
+                    // streams, but LAN chunks take a bounded round-robin turn
+                    // so a ready peer cannot be starved by a fast reader.
+                    val permit = chunkScheduler?.acquire(peerId)
+                    try {
+                        Framing.writeFrame(output, seq, buffer, read)
+                    } finally {
+                        // A failed flush must release the turn as well; leaving
+                        // it held would turn one peer's I/O error into INV-B3's
+                        // global hang.
+                        permit?.release()
+                    }
                     // Only now, after the flush inside writeFrame, has anything
                     // really moved (§11.2).
                     seq++

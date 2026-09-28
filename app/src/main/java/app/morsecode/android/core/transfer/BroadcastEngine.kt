@@ -10,6 +10,8 @@ import app.morsecode.android.core.model.SendResult
 import app.morsecode.android.core.model.TransferFile
 import app.morsecode.android.core.model.TransferItem
 import app.morsecode.android.core.model.TransferState
+import app.morsecode.android.core.network.ChunkWindowSession
+import app.morsecode.android.core.network.RoundRobinChunkScheduler
 import app.morsecode.android.core.network.TransportSession
 import app.morsecode.android.core.util.PeerPalette
 import kotlinx.coroutines.CancellationException
@@ -68,6 +70,9 @@ class BroadcastEngine(
     private val pausedPeers: MutableSet<String> = Collections.synchronizedSet(HashSet())
     private val cancelledPeers: MutableSet<String> = Collections.synchronizedSet(HashSet())
 
+    /** §10.2: bounded chunk turns for LAN sessions, never OS luck. */
+    private var chunkScheduler: RoundRobinChunkScheduler? = null
+
     private var batchId: String = ""
     private var startedAt: Long = 0
     private var summarised = false
@@ -83,9 +88,12 @@ class BroadcastEngine(
         batchId = UUID.randomUUID().toString()
         startedAt = clock()
         summarised = false
+        for (old in sessions.values) (old as? ChunkWindowSession)?.setChunkScheduler(null)
         sessions.clear()
         pausedPeers.clear()
         cancelledPeers.clear()
+        chunkScheduler = RoundRobinChunkScheduler(peers.map { it.peerId })
+        for (peer in peers) (peer as? ChunkWindowSession)?.setChunkScheduler(chunkScheduler)
 
         val items = files.map { file ->
             TransferItem(
@@ -363,14 +371,17 @@ class BroadcastEngine(
                 },
             )
         }
+        scope.launch { chunkScheduler?.remove(peerId) }
         emit(EngineEvent.PeerDisconnected(peerId, reason))
         logStore?.w("Broadcast peer $peerId lost: $reason")
     }
 
     /** INV-B4: verified means every file this peer accepted came out right. */
     private fun finishPeerIfDone(peerId: String) {
+        var finished = false
         update(peerId) { delivery ->
             if (!delivery.isFinished) return@update delivery
+            finished = true
             val verified = delivery.itemStates.values.all {
                 it == TransferState.COMPLETED || it == TransferState.SKIPPED
             }
@@ -380,6 +391,7 @@ class BroadcastEngine(
                 speedBps = 0,
             )
         }
+        if (finished) scope.launch { chunkScheduler?.remove(peerId) }
     }
 
     /** INV-B5: ONE coalesced summary covering all peers. */

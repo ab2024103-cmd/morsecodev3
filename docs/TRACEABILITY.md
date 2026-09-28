@@ -1663,3 +1663,38 @@ side, and that is where it belongs.
 The `adb shell wm size` sweep still yields no frames (the resize wedges the
 step). A35 stays BLOCKED.
 
+
+---
+
+## Stage 20 — fidelity and carried-over repairs (implementation status)
+
+### Fidelity pass (§4.15, §6 / §7)
+
+**BLOCKED in this checkout.** The available environment has no Java runtime,
+Android SDK/emulator/ADB, or desktop browser, so same-width Android screenshots
+cannot be produced or compared to `docs/ui-simulator.html`. This is an
+execution-environment block, not a claim that the screens are visually exact.
+No visual delta has been silently marked fixed; it remains to run on the
+§21.3 emulator harness.
+
+### Repairs implemented; validation pending Android-capable CI
+
+| Stage 20 gap | Implementation | Proving coverage / §22 impact | Status |
+| --- | --- | --- | --- |
+| §14.1 background-shaped transfer death | `Prefs` persists active/backgrounded evidence; app launch converts the pair to a retained Doctor warning; a real battery exemption clears it. | **A10**; `DiagnosticsTest.aPersistedBackgroundKillShapeSurfacesTheSpecificBatteryWarning` and `backgroundedActiveTransferMarkerSurvivesLaunchAsDoctorEvidence`; service lifecycle still needs instrumentation. | Implemented; device validation pending |
+| WebShare held SSE | `/api/events` is a `newChunkedResponse` backed by a held per-session pipe; offer listeners publish immediately and heartbeats keep quiet connections alive. | **A5, A42**; `SseHubTest.oneOpenStreamReceivesInitialAndPublishedFramesWithoutReconnecting` and offer listener test; HTTP/server lifecycle still needs integration execution. | Implemented; server integration pending |
+| Ranged push delivery | the exact fixed-length response stream reports a span only after all its bytes were consumed; merged coverage must reach `[0,size)`. | **A5, A12**; `PushOffersTest.partialAndOverlappingRangesDoNotCompleteUntilCoverageReachesTheEnd`. | Implemented; HTTP integration pending |
+| §10.2 LAN round-robin window | `RoundRobinChunkScheduler` gates actual `LanSession` frame writes; `BroadcastEngine` attaches/removes LAN sessions so a dead peer cannot strand the turn. | **A9**; `RoundRobinChunkSchedulerTest` covers window ordering and peer removal. | Implemented; multi-device validation pending |
+| §6.8.3 receiver broadcast identity | LAN HELLO carries `broadcasting`; receiver session state renders `Broadcast · Phone · LAN` with `[FROM]`, without recipient disclosure. | **A9**; source-level wiring needs receiver UI instrumentation. | Implemented; UI validation pending |
+| Now-Playing queue | Queue opens `NowPlayingQueueSheet`, backed by the process-scoped player queue, with play-now and remove actions. | **A23**; existing `PlayerContractTest` covers queue removal/current-track semantics; sheet needs UI instrumentation. | Implemented; UI validation pending |
+| §6.13 profile name / avatar | Settings has persisted rename plus an independent avatar-colour chooser; advertised device name reads the saved profile. | **A11**; `DiagnosticsTest.profileNameAndAvatarChoicePersistAsSettingsData`; needs UI instrumentation. | Implemented; suite/UI validation pending |
+| §6.9 Trash + Files selection actions | Local files and folder trees move to durable 30-day Trash with Undo/restore/purge; the selection toolbar exposes Send, Share, Delete, Rename, Move, Copy, Compress and Properties. | **A23–A25**; `TrashStoreTest` covers restore and age purge. Provider-owned URI deletion is deliberately not represented as undoable Trash. | Implemented; picker/UI validation pending |
+| §7.2 thumbnail eviction | `ThumbnailStore` is timestamp-LRU with a 32 MiB byte budget and testable eviction API. | **A22**; `ReliabilityTest.webThumbnailCacheEvictsGeneratedFilesPastItsByteBudget`. | Implemented; suite pending |
+
+### Static evidence
+
+- `python3 tools/lintgate.py` — **PASS**, 261 resource/source files scanned.
+- `git diff --check` — **PASS**.
+- Gradle compilation/unit/instrumented execution remains blocked locally because
+  `java` is not installed. The listed tests were added but are **not claimed to
+  have run** in this environment.

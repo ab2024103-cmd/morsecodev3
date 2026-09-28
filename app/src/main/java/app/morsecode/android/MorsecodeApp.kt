@@ -19,6 +19,14 @@ class MorsecodeApp : Application() {
         super.onCreate()
         AppServices.init(this)
 
+        // §14.1: an active marker that survived a *backgrounded* transfer is
+        // evidence of an OEM/background-shaped death. Keep the resulting
+        // Doctor warning until the owner resolves it; do not manufacture a
+        // warning for an ordinary foreground app restart.
+        if (AppServices.prefs.recordInterruptedBackgroundTransferAtLaunch()) {
+            AppServices.logStore.w("Previous transfer ended after the app went to the background")
+        }
+
         installCrashHandler()
 
         // Theme bootstrap (§4.1). Prefs resolves first run to the system
