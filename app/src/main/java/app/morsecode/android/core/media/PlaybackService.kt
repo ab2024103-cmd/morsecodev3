@@ -43,6 +43,8 @@ class PlaybackService : Service() {
     private var player: ExoPlayer? = null
     private var session: MediaSession? = null
     private var noisyRegistered = false
+    /** Avoid looping forever when Repeat All meets a queue of unreadable files. */
+    private val failedTracks = HashSet<String>()
 
     private val queue get() = AppServices.playbackQueue
     private val volume get() = AppServices.volumeControl
@@ -85,10 +87,9 @@ class PlaybackService : Service() {
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                // §6.11.0 (Stage 21) will make this user-visible; for now it
-                // must not throw and must not wedge the service.
-                AppServices.logStore.e("Playback failed: ${error.errorCodeName}")
-                if (queue.advance()) startTrack() else stopPlayback()
+                // Registered before any item is prepared: malformed, zero-byte
+                // and unsupported/DRM tracks all take this recoverable path.
+                handleFailure(error.errorCodeName)
             }
         })
         player = exo
@@ -121,14 +122,55 @@ class PlaybackService : Service() {
 
     private fun startTrack() {
         val track = queue.state.value.current ?: return
+        // A previously rejected item is skipped synchronously. This matters for
+        // Repeat All: error callbacks alone could otherwise cycle forever over
+        // a queue containing only unreadable tracks.
+        if (failedTracks.contains(track.uri.toString())) {
+            if (advancePastFailed()) startTrack() else stopPlayback()
+            return
+        }
         val exo = player ?: return
-        exo.setMediaItem(Media3Item.fromUri(track.uri))
-        exo.volume = volume.gain
-        exo.prepare()
-        exo.play()
-        queue.setPlaying(true)
-        updateSession()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            // The listener is already installed in onCreate, BEFORE this call.
+            // The try block additionally catches synchronous URI/prepare faults.
+            exo.setMediaItem(Media3Item.fromUri(track.uri))
+            exo.volume = volume.gain
+            exo.prepare()
+            exo.play()
+            queue.setPlaying(true)
+            updateSession()
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (error: Exception) {
+            handleFailure(error.javaClass.simpleName)
+        }
+    }
+
+    /** §6.11.0: explain, skip and continue; never let one bad file crash audio. */
+    private fun handleFailure(detail: String) {
+        val track = queue.state.value.current ?: run {
+            stopPlayback()
+            return
+        }
+        failedTracks.add(track.uri.toString())
+        queue.setPlaying(false)
+        queue.reportFailure(track, detail)
+        AppServices.logStore.e("Playback failed · ${track.name} · $detail")
+        if (advancePastFailed()) {
+            startTrack()
+        } else {
+            stopPlayback()
+        }
+    }
+
+    /** Finds the next unfailed item, with a hard bound for Repeat All/One. */
+    private fun advancePastFailed(): Boolean {
+        val attempts = queue.state.value.tracks.size
+        repeat(attempts) {
+            if (!queue.advance()) return false
+            val next = queue.state.value.current ?: return false
+            if (!failedTracks.contains(next.uri.toString())) return true
+        }
+        return false
     }
 
     private fun play() {

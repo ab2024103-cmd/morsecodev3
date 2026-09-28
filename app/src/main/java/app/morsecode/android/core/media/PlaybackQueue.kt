@@ -15,6 +15,13 @@ class PlaybackQueue {
 
     enum class Repeat { OFF, ALL, ONE }
 
+    /**
+     * §6.11.0: decoding failures are data the player surface must explain, not
+     * an exception a service thread may lose. A StateFlow keeps the newest
+     * failure long enough for a newly opened Now-Playing screen to show it.
+     */
+    data class Failure(val id: Long, val trackName: String, val detail: String)
+
     data class State(
         val tracks: List<MediaItem> = emptyList(),
         val index: Int = 0,
@@ -33,6 +40,9 @@ class PlaybackQueue {
     private val stateFlow = MutableStateFlow(State())
     val state: StateFlow<State> get() = stateFlow
 
+    private val failureFlow = MutableStateFlow<Failure?>(null)
+    val failure: StateFlow<Failure?> get() = failureFlow
+
     private var shuffleOrder: List<Int> = emptyList()
 
     fun setQueue(tracks: List<MediaItem>, startIndex: Int) {
@@ -40,7 +50,18 @@ class PlaybackQueue {
             tracks = tracks,
             index = startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)),
         )
+        failureFlow.value = null
         shuffleOrder = tracks.indices.shuffled()
+    }
+
+    /** Publishes an actionable player error for the visible Now-Playing UI. */
+    fun reportFailure(track: MediaItem, detail: String) {
+        failureFlow.value = Failure(track.id, track.name, detail)
+    }
+
+    /** An acknowledged error must not return on rotation or when reopening the player. */
+    fun acknowledgeFailure(id: Long) {
+        if (failureFlow.value?.id == id) failureFlow.value = null
     }
 
     fun setPlaying(playing: Boolean) {

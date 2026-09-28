@@ -399,6 +399,7 @@
 
     <!-- ===== Media players (§6.11) ===== -->
     <string name="player_play">Play</string>
+    <string name="player_cant_play">Can’t play this file · %1$s</string>
     <string name="player_pause">Pause</string>
     <string name="player_next">Next</string>
     <string name="player_previous">Previous</string>

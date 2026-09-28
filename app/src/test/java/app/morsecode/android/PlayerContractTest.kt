@@ -157,6 +157,20 @@ class PlayerContractTest {
     )
 
     @Test
+    fun anUnplayableTrackProducesAnAcknowledgablePlayerError() {
+        val queue = PlaybackQueue()
+        val broken = track(7).copy(name = "broken.mp3")
+        queue.setQueue(listOf(broken), startIndex = 0)
+
+        queue.reportFailure(broken, "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED")
+        assertEquals("broken.mp3", queue.failure.value?.trackName)
+        assertTrue(queue.failure.value?.detail?.contains("PARSING") == true)
+
+        queue.acknowledgeFailure(broken.id)
+        assertNull("an acknowledged snackbar must not return after rotation", queue.failure.value)
+    }
+
+    @Test
     fun repeatOffStopsAtTheEndAndRepeatAllWraps() {
         val queue = PlaybackQueue()
         queue.setQueue(listOf(track(1), track(2)), startIndex = 1)

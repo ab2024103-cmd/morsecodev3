@@ -185,6 +185,17 @@ class MusicPlayerFragment : Screen() {
                 AppServices.playbackQueue.state.collect { render(it) }
             }
         }
+        // §6.11.0: a corrupt/unsupported item must be explained and skipped,
+        // not silently stop the player or crash its service.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppServices.playbackQueue.failure.collect { failure ->
+                    if (failure == null) return@collect
+                    Ui.snackbar(requireActivity(), getString(R.string.player_cant_play, failure.trackName))
+                    AppServices.playbackQueue.acknowledgeFailure(failure.id)
+                }
+            }
+        }
         // The clock drives the bar only while nobody is dragging it (§6.11).
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
