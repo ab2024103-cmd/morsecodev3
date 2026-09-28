@@ -309,7 +309,11 @@ jobs:
             # regardless of `set +e`.
             GRADLE_EXIT=0
             ./gradlew --no-daemon connectedDebugAndroidTest || GRADLE_EXIT=$?
-            echo "gradle_exit=$GRADLE_EXIT" >> "$GITHUB_ENV"
+            # The emulator action runs this script in a child environment, so
+            # GITHUB_ENV does not reliably reach the later workflow steps.
+            # Keep the real exit in the workspace and have the verdict step
+            # read that file; otherwise a green device suite is marked failed.
+            echo "$GRADLE_EXIT" > gradle-exit.txt
 
             # Evidence FIRST. The last run passed 8/8 on API 34 and still
             # reported zero screenshots, because the sweep died before the pull
@@ -355,7 +359,7 @@ jobs:
           cp -r app/build/reports/androidTests emulator-evidence/reports 2>/dev/null || true
           cp -r results emulator-evidence/results 2>/dev/null || true
           cp -r app/build/outputs/androidTest-results emulator-evidence/results-last 2>/dev/null || true
-          cp script-marker.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt capture-log.txt emulator-evidence/ 2>/dev/null || true
+          cp script-marker.txt gradle-exit.txt shots-pull.txt diag.txt gradle-tails.txt sweep-listing.txt capture-log.txt emulator-evidence/ 2>/dev/null || true
           cp shots-listing.txt shots-pulled.txt emulator-evidence/ 2>/dev/null || true
           find emulator-evidence -type f | head -60 > emulator-evidence/INDEX.txt || true
           cat emulator-evidence/INDEX.txt
@@ -391,7 +395,8 @@ jobs:
       - name: Fail if the instrumented suite failed
         if: always()
         run: |
-          if [ "${gradle_exit:-1}" != "0" ]; then
+          GRADLE_EXIT=$(cat gradle-exit.txt 2>/dev/null || echo 1)
+          if [ "$GRADLE_EXIT" != "0" ]; then
             echo "::error::the instrumented suite failed on API ${{ matrix.api }} —" \
                  "see the emulator-api${{ matrix.api }} artifact and the release notes"
             exit 1

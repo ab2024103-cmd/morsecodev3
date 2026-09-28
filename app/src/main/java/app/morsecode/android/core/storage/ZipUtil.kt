@@ -43,7 +43,11 @@ object ZipUtil {
     ): Int {
         var written = 0L
         var entries = 0
-        val zip = ZipOutputStream(output, Charsets.UTF_8)
+        // The Charset-taking constructor was added after API 23. Android's
+        // one-argument ZipOutputStream has used UTF-8 entry names since the
+        // platform's ZIP implementation adopted the Java 7 contract, and it
+        // works on the Android-6 reference device (§3.2 / A10).
+        val zip = ZipOutputStream(output)
         // Stored-with-deflate is the default; media is already compressed, so
         // the level is kept low to spend CPU on throughput rather than ratio.
         zip.setLevel(COMPRESSION_LEVEL)
