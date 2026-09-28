@@ -73,22 +73,24 @@ class Discovery(
     private var socket: DatagramSocket? = null
 
     /** Best-effort local IPv4 shown with the live LAN beacon status (§6.3). */
-    fun localIpv4Address(): String? = try {
-        val interfaces = NetworkInterface.getNetworkInterfaces()
-        while (interfaces.hasMoreElements()) {
-            val network = interfaces.nextElement()
-            if (!network.isUp || network.isLoopback) continue
-            val addresses = network.inetAddresses
-            while (addresses.hasMoreElements()) {
-                val address = addresses.nextElement()
-                if (address is java.net.Inet4Address && !address.isLoopbackAddress) {
-                    return address.hostAddress
+    fun localIpv4Address(): String? {
+        return try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val network = interfaces.nextElement()
+                if (!network.isUp || network.isLoopback) continue
+                val addresses = network.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (address is java.net.Inet4Address && !address.isLoopbackAddress) {
+                        return address.hostAddress
+                    }
                 }
             }
+            null
+        } catch (_: Exception) {
+            null
         }
-        null
-    } catch (_: Exception) {
-        null
     }
 
     fun start() {
