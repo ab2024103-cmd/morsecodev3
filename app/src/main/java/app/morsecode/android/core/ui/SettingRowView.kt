@@ -32,7 +32,20 @@ class SettingRowView @JvmOverloads constructor(
     private val chevron = AppCompatImageView(context).apply {
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
-    private val toggle = com.google.android.material.materialswitch.MaterialSwitch(context)
+    /**
+     * §6.13's switch, Material's.
+     *
+     * `showText` must be off and the on/off labels must be empty strings, not
+     * null: `SwitchCompat.makeLayout` measures them unconditionally and throws
+     * a NullPointerException on a null label. The emulator suite caught this
+     * the first time the theme changed, which is the whole reason §21.3 exists.
+     */
+    private val toggle = com.google.android.material.materialswitch.MaterialSwitch(context).apply {
+        showText = false
+        textOn = ""
+        textOff = ""
+        text = ""
+    }
 
     init {
         orientation = HORIZONTAL
