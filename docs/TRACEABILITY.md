@@ -1445,3 +1445,85 @@ was made provable instead.
 `tools/make-upload-key.sh` creates the one stable key on the owner's machine.
 It deliberately does not run in CI: §19.3's "throwaway keys FORBIDDEN" is
 exactly what a build-time `keytool -genkeypair` would produce.
+
+## Stage 18 — run the app in CI (§21.3) — INTERIM REPORT
+
+**Status: the harness is built and has already produced its first real finding.
+The GitHub token in my environment expired mid-stage, so the last run could not
+be read back. Everything below is from runs that completed.**
+
+### What was built
+
+| File | Purpose |
+| --- | --- |
+| `.github/workflows/build.yml` (new `emulator` job) | API 23 **and** API 34 emulators via `reactivecircus/android-emulator-runner`, installing the debug APK, running the instrumented suite, driving the §4.14 size sweep through `adb shell wm size`, pulling screenshots and logcat, publishing everything as artifacts **and** as a release body (artifacts are not readable from my sandbox; release bodies are). |
+| `app/src/androidTest/.../ScreenWalkTest.kt` | Instantiates every §6/§7 destination on a device, in **both themes**, photographing each and recording any that throw instead of stopping at the first. |
+| `app/src/androidTest/.../AccentAndSizeTest.kt` | Asserts each of the five accents actually reaches the theme a screen resolves (A11's mechanism). |
+| `app/src/androidTest/.../ZFilesFlowTest.kt` | Drives the Files tabs and the sort sheet through Espresso; named to sort last, for the reason below. |
+| `app/src/androidTest/.../LoopbackTransferTest.kt` | A file crossing real loopback TCP **on the Android runtime**, SHA-256 verified, with the receiving history row checked. |
+| `app/src/androidTest/.../WebShareDeviceTest.kt` | The server on the real port 33455, the API's 401 without a token, the page rendered in a WebView, and a streamed zip pulled back over HTTP. |
+| `tools/instrumented-report.py` | Turns the JUnit XML, the screenshots and the diagnostics into a markdown report published where it can be read. |
+
+### Finding 1 — Android 6 crash, reproduced with a trace (this is Stage 21's P0-1)
+
+```
+java.lang.NoSuchMethodError: No interface method reversed()Ljava/util/Comparator;
+  in class Ljava/util/Comparator; (declaration of 'java.util.Comparator'
+  appears in /system/framework/core-libart.jar)
+    at app.morsecode.android.core.media.SortRules.sortItems(SortRules.kt:48)
+    at app.morsecode.android.feature.filemanager.FilesFragment$loadNextPage$1
+```
+
+Reproduced on API 23 in **three consecutive runs**. `Comparator.reversed()` is a
+Java-8 default method; without desugaring it does not exist on API 23, so
+**opening the Files tab kills the app on Android 6** — exactly the symptom the
+Stage 21 brief reports from the MYA-L10. Two call sites: `SortRules.kt:48`
+(items) and `SortRules.kt:61` (directory entries).
+
+**A10 is therefore FAIL, not BLOCKED.** It is the first criterion this project
+has been able to move off BLOCKED by evidence rather than argument, and it moved
+the wrong way — which is the point of §21.3.
+
+### Finding 2 — my own lint gate is part of the defect
+
+§20.8's Java-8 family lists `removeIf`, `putIfAbsent`, `computeIfAbsent`,
+`computeIfPresent`, `getOrDefault`, `replaceAll`, `.stream(`, `Stream.`,
+`Collectors.` — and **not** `Comparator.reversed()`, `thenComparing`,
+`Map.forEach` or `Optional`. The gate passed 256 files while shipping a
+guaranteed API 23 crash. The Stage 21 brief says the gate "is broken too and
+must be fixed in the same change"; this report is the evidence for that, and
+the fix belongs with the fix for the crash, not here (§ Stage 18: "do not fix
+anything except what is needed to make the harness run").
+
+### Finding 3 — five harness faults, all mine, all fixed
+
+Recorded because they cost five CI rounds and would otherwise look like product
+failures:
+
+1. `withText("Files")` matched the tab, the screen title and the nav label.
+2. Screenshots written from the app to `/sdcard` fail with EACCES on API 23 and
+   EPERM on API 34 — scoped storage. They are now taken by `screencap` running
+   as the shell user.
+3. A screenshot failure was reported as a **test** failure, masking what the
+   product did. Capture is now best-effort.
+4. `GrantPermissionRule(WRITE_EXTERNAL_STORAGE)` is a `SecurityException` on
+   API 34.
+5. A crash in one suite cancelled the four after it, so API 23 only ever ran
+   two tests. Ordering is now by class name, with the crashing suite last.
+
+### Where the harness stands
+
+The last three runs died inside the Gradle invocation with no output — the only
+variable was how that invocation was written (a per-class loop, then a class
+filter, then output redirection). The command is now byte-for-byte the one that
+ran tests in the first two runs. **That run was pushed but could not be read
+back: the GitHub credentials in my environment expired.** It needs reconnecting
+before the result can be reported.
+
+### §22 re-audit
+
+Not written yet, and deliberately so: §21.3 says a criterion may only leave
+BLOCKED when the emulator has actually settled it. One criterion has moved —
+**A10: BLOCKED → FAIL**, with the trace above. The rest wait for a completed
+emulator run.
+
