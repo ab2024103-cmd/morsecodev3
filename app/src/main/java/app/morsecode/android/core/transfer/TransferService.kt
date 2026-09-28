@@ -59,7 +59,7 @@ class TransferService : Service() {
     private fun observeQueue() {
         if (observer?.isActive == true) return
         observer = AppServices.engineScope.launch {
-            AppServices.transferEngine.items.collect {
+            AppServices.transferEngine.items.collect { items ->
                 // §6.13 "Notifications · Transfer progress": with the switch
                 // off the service keeps its (mandatory) foreground
                 // notification but stops publishing progress into it.

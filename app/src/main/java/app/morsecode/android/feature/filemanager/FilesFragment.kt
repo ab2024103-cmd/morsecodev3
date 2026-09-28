@@ -454,7 +454,7 @@ class FilesFragment : Screen() {
         selectionActions.gravity = Gravity.CENTER_VERTICAL
         bar.addView(
             selectionActions,
-            android.widget.HorizontalScrollView.LayoutParams(
+            ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
@@ -615,7 +615,7 @@ class FilesFragment : Screen() {
     /** Rename is intentionally limited to one local file so no selected item is silently skipped. */
     private fun renameSelection() {
         val entry = selection.snapshot().singleOrNull()
-        val source = entry?.path?.let(::java.io.File)
+        val source = entry?.path?.let { java.io.File(it) }
         if (entry == null || source == null || !source.exists()) {
             Ui.snackbar(requireActivity(), getString(R.string.files_action_one_local_file))
             return
@@ -696,7 +696,7 @@ class FilesFragment : Screen() {
             }.isSuccess
         }
 
-        val source = entry.path?.let(::java.io.File) ?: return false
+        val source = entry.path?.let { java.io.File(it) } ?: return false
         val destination = android.provider.DocumentsContract.createDocument(
             resolver,
             parent,
@@ -760,7 +760,7 @@ class FilesFragment : Screen() {
         name: String,
     ) {
         if (entry.isDirectory) {
-            val directory = entry.path?.let(::java.io.File) ?: return
+            val directory = entry.path?.let { java.io.File(it) } ?: return
             zip.putNextEntry(java.util.zip.ZipEntry("$name/"))
             zip.closeEntry()
             for (child in directory.listFiles().orEmpty()) {

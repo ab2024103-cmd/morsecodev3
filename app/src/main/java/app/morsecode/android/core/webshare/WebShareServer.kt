@@ -58,7 +58,7 @@ class WebShareServer(
     private val uploads = ConcurrentHashMap<String, UploadState>()
 
     /** A held SSE stream, not the former two-second snapshot poll (§7.8). */
-    private val sse = SseHub { sessionId -> eventsPayload(sessionId).toString() }
+    private val sse = SseHub(snapshot = { sessionId -> eventsPayload(sessionId).toString() })
 
     init {
         // A phone-originated offer reaches its owning browser immediately. The
