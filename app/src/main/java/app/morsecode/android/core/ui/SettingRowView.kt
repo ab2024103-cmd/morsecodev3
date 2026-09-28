@@ -8,7 +8,6 @@ import android.widget.LinearLayout
 import android.view.View
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.widget.ImageViewCompat
 import app.morsecode.android.R
 import app.morsecode.android.core.util.ThemeColors
@@ -33,7 +32,7 @@ class SettingRowView @JvmOverloads constructor(
     private val chevron = AppCompatImageView(context).apply {
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
-    private val toggle = SwitchCompat(context)
+    private val toggle = com.google.android.material.materialswitch.MaterialSwitch(context)
 
     init {
         orientation = HORIZONTAL

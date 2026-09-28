@@ -1,95 +1,82 @@
 package app.morsecode.android.core.ui
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.text.TextUtils
 import android.util.AttributeSet
-import android.view.Gravity
-import android.widget.LinearLayout
-import androidx.appcompat.widget.AppCompatTextView
+import android.widget.FrameLayout
 import app.morsecode.android.R
 import app.morsecode.android.core.util.ThemeColors
+import com.google.android.material.tabs.TabLayout
 
 /**
- * §6.9 tab strip: equal flex cells filling the width, each centred, with the
- * 2 dp accent underline spanning its own cell. No leftover gap at any width and
- * no horizontal scrolling — labels ellipsise before the strip does.
+ * §6.9's tab strip — now Material's `TabLayout`, restyled (§3.3 [CHANGED]).
  *
- * ONE tab-index source of truth: this view owns the index and reports changes;
- * a screen that kept its own copy is exactly the mismatch §6.9 calls
- * release-blocking, because it makes people send the wrong files.
+ * §6.9 requires five equal cells filling the width with a 2 dp accent
+ * underline spanning its own cell, labels that shrink before the strip does,
+ * and no horizontal scrolling. `MODE_FIXED` + `GRAVITY_FILL` is exactly that,
+ * and it brings the ripples, the indicator animation and the accessibility
+ * roles the hand-built strip never had.
+ *
+ * The public API is unchanged, because §20.1's "ONE tab-index source of truth"
+ * is the contract that matters: this view still owns the index and reports
+ * changes, and a screen still renders whatever index it reports.
  */
 class TabStripView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : LinearLayout(context, attrs, defStyleAttr) {
+) : FrameLayout(context, attrs, defStyleAttr) {
 
-    private val cells = ArrayList<AppCompatTextView>()
-    private val underline = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val underlineHeight = Shapes.dp(context, 2f)
-    private var selected = 0
+    private val tabs = TabLayout(context)
     private var listener: ((Int) -> Unit)? = null
 
     init {
-        orientation = HORIZONTAL
-        setWillNotDraw(false)
-        underline.color = ThemeColors.accent(context)
+        tabs.tabMode = TabLayout.MODE_FIXED
+        tabs.tabGravity = TabLayout.GRAVITY_FILL
+        tabs.isTabIndicatorFullWidth = false
+        tabs.setSelectedTabIndicatorHeight(Shapes.dpInt(context, 2f))
+        tabs.setSelectedTabIndicatorColor(ThemeColors.accent(context))
+        tabs.setTabTextColors(
+            ThemeColors.resolve(context, R.attr.colorTextSecondary),
+            ThemeColors.accent(context),
+        )
+        tabs.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        tabs.tabRippleColor = android.content.res.ColorStateList.valueOf(
+            ThemeColors.withAlpha(ThemeColors.resolve(context, R.attr.colorTextPrimary), 0.12f),
+        )
+        addView(
+            tabs,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+        )
+
+        tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) {
+                listener?.invoke(tab.position)
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
+
+            override fun onTabReselected(tab: TabLayout.Tab) = Unit
+        })
     }
 
     fun bind(labels: List<CharSequence>, selectedIndex: Int = 0, onSelected: (Int) -> Unit) {
-        removeAllViews()
-        cells.clear()
         listener = null
-        labels.forEachIndexed { index, label ->
-            val cell = AppCompatTextView(context)
-            cell.setTextAppearance(context, R.style.TextAppearance_Morsecode_Button)
-            cell.text = label
-            cell.contentDescription = label
-            cell.gravity = Gravity.CENTER
-            cell.maxLines = 1
-            cell.ellipsize = TextUtils.TruncateAt.END
-            cell.minHeight = Shapes.dpInt(context, 48f)
-            cell.isClickable = true
-            cell.isFocusable = true
-            cell.setOnClickListener { select(index) }
-            cells.add(cell)
-            addView(cell, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        tabs.removeAllTabs()
+        for (label in labels) {
+            val tab = tabs.newTab()
+            tab.text = label
+            tab.contentDescription = label
+            tabs.addTab(tab)
         }
-        selected = selectedIndex.coerceIn(0, (labels.size - 1).coerceAtLeast(0))
-        paint()
+        tabs.getTabAt(selectedIndex.coerceIn(0, (labels.size - 1).coerceAtLeast(0)))?.select()
         listener = onSelected
     }
 
+    /** Selecting the tab that is already current must not re-notify (§20.1). */
     fun select(index: Int) {
-        if (index == selected) return
-        selected = index
-        paint()
-        invalidate()
-        listener?.invoke(index)
+        if (index == selectedIndex()) return
+        tabs.getTabAt(index)?.select()
     }
 
-    fun selectedIndex(): Int = selected
-
-    private fun paint() {
-        val accent = ThemeColors.accent(context)
-        val idle = ThemeColors.resolve(context, R.attr.colorTextSecondary)
-        cells.forEachIndexed { index, cell ->
-            cell.setTextColor(if (index == selected) accent else idle)
-        }
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val cell = cells.getOrNull(selected) ?: return
-        underline.color = ThemeColors.accent(context)
-        canvas.drawRect(
-            cell.left.toFloat(),
-            height - underlineHeight,
-            cell.right.toFloat(),
-            height.toFloat(),
-            underline,
-        )
-    }
+    fun selectedIndex(): Int = tabs.selectedTabPosition.coerceAtLeast(0)
 }

@@ -2,14 +2,16 @@ package app.morsecode.android.feature.viewer
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.media.MediaPlayer
+import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.VideoView
+import androidx.media3.ui.PlayerView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.lifecycle.lifecycleScope
@@ -40,13 +42,21 @@ import kotlinx.coroutines.launch
  */
 class VideoPlayerActivity : ImmersiveActivity() {
 
-    private lateinit var video: VideoView
+    /**
+     * §3.3 [CHANGED]: ExoPlayer behind a Media3 `PlayerView` with its own
+     * controls switched OFF — §6.11 prescribes the chrome (draggable bar,
+     * ±10 s, the real volume slider, an honest CC state), so the surface is
+     * Media3's and the controls stay ours.
+     */
+    private lateinit var video: PlayerView
+    private var exo: ExoPlayer? = null
     private lateinit var seekBar: SeekBarView
     private lateinit var elapsed: AppCompatTextView
     private lateinit var duration: AppCompatTextView
     private lateinit var meta: AppCompatTextView
     private lateinit var volumeSlider: SeekBarView
     private lateinit var volumeIcon: AppCompatImageView
+    private lateinit var playButton: AppCompatImageView
     private lateinit var chrome: LinearLayout
 
     private val volume: VolumeControl get() = AppServices.volumeControl
@@ -64,7 +74,9 @@ class VideoPlayerActivity : ImmersiveActivity() {
         }
         item = current
 
-        video = VideoView(this)
+        video = PlayerView(this)
+        video.useController = false
+        video.setShutterBackgroundColor(android.graphics.Color.BLACK)
         val videoParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -84,28 +96,42 @@ class VideoPlayerActivity : ImmersiveActivity() {
         video.setOnClickListener { toggleChrome() }
         stage.setOnClickListener { toggleChrome() }
 
-        video.setVideoURI(current.uri)
-        video.setOnPreparedListener { player -> onPrepared(player, current) }
-        video.setOnCompletionListener {
-            AppServices.playbackPrefs.setResumePosition(keyOf(current), 0, video.duration.toLong())
-        }
+        val player = ExoPlayer.Builder(this).build()
+        exo = player
+        video.player = player
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) onPrepared(current)
+                if (state == Player.STATE_ENDED) {
+                    AppServices.playbackPrefs.setResumePosition(keyOf(current), 0, player.duration)
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                paintPlayButton(isPlaying)
+            }
+        })
+        player.setMediaItem(Media3Item.fromUri(current.uri))
+        player.prepare()
         startTicker()
     }
 
-    private fun onPrepared(player: MediaPlayer, current: MediaItem) {
-        seekBar.durationMillis = player.duration.toLong()
-        duration.text = Fmt.duration(player.duration.toLong())
+    private fun onPrepared(current: MediaItem) {
+        val player = exo ?: return
+        val length = player.duration.coerceAtLeast(0)
+        seekBar.durationMillis = length
+        duration.text = Fmt.duration(length)
         meta.text = getString(
             R.string.player_video_meta,
             Fmt.size(current.sizeBytes),
-            Fmt.duration(player.duration.toLong()),
+            Fmt.duration(length),
         )
-        applyVolume(player)
+        applyVolume()
 
         // §6.11: resume position is remembered per file.
         val resume = AppServices.playbackPrefs.resumePosition(keyOf(current))
-        if (resume > 0) video.seekTo(resume.toInt())
-        video.start()
+        if (resume > 0) player.seekTo(resume)
+        player.play()
     }
 
     private fun buildChrome(): LinearLayout {
@@ -144,9 +170,10 @@ class VideoPlayerActivity : ImmersiveActivity() {
         controls.addView(chromeButton(R.drawable.ic_back, R.string.player_replay_ten) {
             seekTo(SeekContract.skipBackward(currentPosition(), seekBar.durationMillis))
         })
-        controls.addView(
-            chromeButton(R.drawable.ic_pause, R.string.player_pause, accent = true) { togglePlay() },
-        )
+        playButton = chromeButton(R.drawable.ic_pause, R.string.player_pause, accent = true) {
+            togglePlay()
+        }
+        controls.addView(playButton)
         controls.addView(chromeButton(R.drawable.ic_chevron_right, R.string.player_forward_ten) {
             seekTo(SeekContract.skipForward(currentPosition(), seekBar.durationMillis))
         })
@@ -175,25 +202,27 @@ class VideoPlayerActivity : ImmersiveActivity() {
 
     // ----- Playback ---------------------------------------------------------
 
-    private fun currentPosition(): Long = video.currentPosition.toLong()
+    private fun currentPosition(): Long = exo?.currentPosition?.coerceAtLeast(0) ?: 0
 
     private fun seekTo(position: Long) {
         val clamped = SeekContract.clamp(position, seekBar.durationMillis)
         // Seeking while paused keeps it paused and repaints at the new frame.
-        video.seekTo(clamped.toInt())
+        exo?.seekTo(clamped)
         seekBar.positionMillis = clamped
         elapsed.text = SeekContract.elapsedLabel(clamped)
     }
 
     private fun togglePlay() {
-        if (video.isPlaying) video.pause() else video.start()
+        val player = exo ?: return
+        if (player.isPlaying) player.pause() else player.play()
+        paintPlayButton(player.isPlaying)
     }
 
     private fun startTicker() {
         lifecycleScope.launch {
             while (true) {
                 delay(TICK_MS)
-                if (video.isPlaying) {
+                if (exo?.isPlaying == true) {
                     // The clock yields while the user is dragging (§6.11):
                     // SeekBarView ignores this while a drag is in progress.
                     seekBar.positionMillis = currentPosition()
@@ -214,7 +243,7 @@ class VideoPlayerActivity : ImmersiveActivity() {
         if (volumeSlider.visibility == View.VISIBLE) {
             // A second tap mutes and remembers, so unmuting restores the level.
             volume.toggleMute()
-            applyVolume(null)
+            applyVolume()
             volumeSlider.positionMillis = volume.percent.toLong()
         } else {
             volumeSlider.visibility = View.VISIBLE
@@ -225,11 +254,19 @@ class VideoPlayerActivity : ImmersiveActivity() {
     private fun setVolumePercent(percent: Int) {
         volume.set(percent)
         volumeShownAt = System.currentTimeMillis()
-        applyVolume(null)
+        applyVolume()
     }
 
-    private fun applyVolume(player: MediaPlayer?) {
-        player?.setVolume(volume.gain, volume.gain)
+    /** §4.13: the control says what it does, in words, for TalkBack. */
+    private fun paintPlayButton(isPlaying: Boolean) {
+        if (!::playButton.isInitialized) return
+        playButton.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_send)
+        playButton.contentDescription =
+            getString(if (isPlaying) R.string.player_pause else R.string.player_play)
+    }
+
+    private fun applyVolume(unused: Any? = null) {
+        exo?.volume = volume.gain
         volumeIcon.alpha = if (volume.isMuted) DISABLED_ALPHA else 1f
         volumeIcon.contentDescription = if (volume.isMuted) {
             getString(R.string.player_muted)
@@ -243,13 +280,13 @@ class VideoPlayerActivity : ImmersiveActivity() {
         KeyEvent.KEYCODE_VOLUME_UP -> {
             volume.step(up = true)
             volumeSlider.positionMillis = volume.percent.toLong()
-            applyVolume(null)
+            applyVolume()
             true
         }
         KeyEvent.KEYCODE_VOLUME_DOWN -> {
             volume.step(up = false)
             volumeSlider.positionMillis = volume.percent.toLong()
-            applyVolume(null)
+            applyVolume()
             true
         }
         KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -289,7 +326,15 @@ class VideoPlayerActivity : ImmersiveActivity() {
                 seekBar.durationMillis,
             )
         }
-        video.pause()
+        exo?.pause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // §7.6's rule, applied natively: the player is released, not hidden.
+        exo?.release()
+        exo = null
+        video.player = null
     }
 
     private fun hasSubtitles(): Boolean {

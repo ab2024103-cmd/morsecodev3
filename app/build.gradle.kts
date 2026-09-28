@@ -126,6 +126,22 @@ dependencies {
     implementation(libs.play.services.nearby)
     implementation(libs.nanohttpd)
 
+    // §3.3 [CHANGED]: Material is REQUIRED, not optional — the mocks are
+    // Material surfaces, and hand-rolling them is named as the biggest cause
+    // of a UI that is "similar but not the same" (§4.15).
+    implementation(libs.material)
+
+    // §3.3: Media3/ExoPlayer for BOTH players. MediaPlayer/VideoView is not
+    // sufficient — codec coverage on API 23 and seekTo semantics (§6.11).
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.session)
+    implementation(libs.media3.common)
+
+    // §3.3 ALLOWED IF USEFUL: a real loader, rather than a hand-rolled LRU,
+    // for grids of thousands of thumbnails (§20.10, and Stage 21's blur).
+    implementation(libs.coil)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.core)

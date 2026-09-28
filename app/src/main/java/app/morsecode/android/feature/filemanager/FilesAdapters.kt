@@ -1,7 +1,6 @@
 package app.morsecode.android.feature.filemanager
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -193,11 +192,22 @@ class MediaGridAdapter(
 
             image.setImageDrawable(null)
             image.setBackgroundColor(ThemeColors.resolve(context, R.attr.colorSurfaceRaised))
-            AppServices.thumbnails.cached(item)?.let { image.setImageBitmap(it) } ?: scope.launch {
-                val bitmap: Bitmap? = AppServices.thumbnails.load(item)
-                // §20.2: re-check the token before applying.
-                if (bitmap != null && bindToken == token) image.setImageBitmap(bitmap)
-            }
+            // §3.3 ALLOWED IF USEFUL — and it is: Coil decodes for the target
+            // size, caches in memory and on disk, and cancels on recycle, all
+            // of which the hand-rolled LRU did partially or not at all. §20.2's
+            // bind token is still checked, because the request is keyed to the
+            // view and the token guards the tail of any in-flight work.
+            coil.Coil.imageLoader(context).enqueue(
+                coil.request.ImageRequest.Builder(context)
+                    .data(item.uri)
+                    .size(coil.size.Size(THUMB_PX, THUMB_PX))
+                    .target(
+                        onSuccess = { drawable ->
+                            if (bindToken == token) image.setImageDrawable(drawable)
+                        },
+                    )
+                    .build(),
+            )
 
             val selected = selection.contains(entry.key)
             check.background = Shapes.circle(
@@ -246,6 +256,9 @@ class MediaGridAdapter(
     private companion object {
         const val TYPE_HEADER = 0
         const val TYPE_TILE = 1
+
+        /** §4.16 (Stage 21) will tune this; a grid tile is ~140 dp at xxhdpi. */
+        const val THUMB_PX = 420
     }
 }
 

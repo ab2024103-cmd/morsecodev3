@@ -1,13 +1,6 @@
 package app.morsecode.android.core.ui
 
 import android.app.Activity
-import android.content.Context
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import androidx.appcompat.widget.AppCompatTextView
 import app.morsecode.android.R
 import app.morsecode.android.core.util.ThemeColors
 
@@ -22,74 +15,28 @@ import app.morsecode.android.core.util.ThemeColors
  */
 object Ui {
 
-    private const val DEFAULT_DURATION_MS = 3200L
-
+    /**
+     * §3.3 [CHANGED]: Material's Snackbar, restyled with §4 tokens.
+     *
+     * The hand-built bar that stood here placed a view in the content root and
+     * removed it on a timer — no swipe-to-dismiss, no window insets, no
+     * accessibility timeout extension, no queueing. Material has all four.
+     */
     fun snackbar(
         activity: Activity,
         message: CharSequence,
         actionLabel: CharSequence? = null,
         onAction: (() -> Unit)? = null,
-        durationMs: Long = DEFAULT_DURATION_MS,
+        durationMs: Int = DEFAULT_DURATION_MS,
     ) {
-        val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
-        val context: Context = activity
-
-        val bar = LinearLayout(context)
-        bar.orientation = LinearLayout.HORIZONTAL
-        bar.gravity = Gravity.CENTER_VERTICAL
-        bar.background = Shapes.raised(context, 12f)
-        val pad = Shapes.dpInt(context, 14f)
-        bar.setPadding(pad, pad, if (actionLabel == null) pad else 0, pad)
-
-        val text = AppCompatTextView(context)
-        text.setTextAppearance(context, R.style.TextAppearance_Morsecode_Body)
-        text.setTextColor(ThemeColors.resolve(context, R.attr.colorTextPrimary))
-        text.text = message
-        bar.addView(
-            text,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-
-        if (actionLabel != null) {
-            val action = AppCompatTextView(context)
-            action.setTextAppearance(context, R.style.TextAppearance_Morsecode_Button)
-            action.setTextColor(ThemeColors.accent(context))
-            action.text = actionLabel
-            action.contentDescription = actionLabel
-            action.gravity = Gravity.CENTER
-            action.minHeight = Shapes.dpInt(context, 48f)
-            action.minWidth = Shapes.dpInt(context, 48f)
-            val actionPad = Shapes.dpInt(context, 14f)
-            action.setPadding(actionPad, actionPad, actionPad, actionPad)
-            action.setOnClickListener {
-                root.removeView(bar)
-                onAction?.invoke()
-            }
-            bar.addView(
-                action,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-        }
-
-        val params = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        params.gravity = Gravity.BOTTOM
-        val margin = Shapes.dpInt(context, 16f)
-        params.setMargins(margin, margin, margin, margin)
-        bar.layoutParams = params
-
-        // Announced to TalkBack as a live region, not silently painted (§15.5).
-        bar.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        root.addView(bar)
-        bar.announceForAccessibility(message)
-
-        bar.postDelayed({
-            if (bar.parent != null) root.removeView(bar)
-        }, durationMs)
+        val root = activity.findViewById<android.view.View>(android.R.id.content) ?: return
+        val bar = com.google.android.material.snackbar.Snackbar.make(root, message, durationMs)
+        bar.setBackgroundTint(ThemeColors.resolve(activity, R.attr.colorSurfaceRaised))
+        bar.setTextColor(ThemeColors.resolve(activity, R.attr.colorTextPrimary))
+        bar.setActionTextColor(ThemeColors.accent(activity))
+        if (actionLabel != null) bar.setAction(actionLabel) { onAction?.invoke() }
+        bar.show()
     }
+
+    private const val DEFAULT_DURATION_MS = 3200
 }

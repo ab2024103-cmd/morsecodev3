@@ -155,6 +155,21 @@ jobs:
             echo "No upload key configured — this is the debug-key preview build."
           fi
 
+      # §19.4: "Record the APK size per release and diff it against the
+      # previous build; an unexplained drop is a release blocker." A total
+      # alone cannot tell you WHAT is missing, so this breaks the APK down.
+      - name: APK composition (§19.4)
+        id: composition
+        run: |
+          APK=$(ls dist/morsecode-*-release.apk dist/morsecode-*-preview-unsigned.apk 2>/dev/null | head -1)
+          python3 tools/apk-report.py "$APK" > composition.md
+          cat composition.md
+          {
+            echo 'composition<<COMPOSITION'
+            cat composition.md
+            echo 'COMPOSITION'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Run summary
         run: |
           {
@@ -198,6 +213,8 @@ jobs:
             "- signed with the stable upload key: ${{ steps.signing.outputs.signed }}" \
             "- signing certificate: ${{ steps.signature.outputs.subject }}" \
             "- certificate SHA-256: ${{ steps.signature.outputs.fingerprint }}" \
+            "" \
+            "${{ steps.composition.outputs.composition }}" \
             "" \
             "\`\`\`" \
             "$(du -h dist/* | sed 's/\t/  /')" \

@@ -2,45 +2,58 @@ package app.morsecode.android.core.ui
 
 import android.app.Dialog
 import android.content.Context
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.LinearLayout
-import androidx.appcompat.app.AppCompatDialog
-import androidx.appcompat.app.AppCompatDialogFragment
 import app.morsecode.android.R
-import app.morsecode.android.core.util.ThemeColors
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 
 /**
- * §4.12g BottomSheet, and the sheet shape rules of §4.8: radius 20 dp, TOP
- * corners only, surface/raised, with a drag handle (§6.7).
+ * §4.12's bottom sheet — now Material's, restyled with §4 tokens rather than
+ * reimplemented (§3.3 [CHANGED]).
  *
- * Built on AppCompatDialogFragment rather than a Material bottom sheet: there
- * is no Material Components dependency (§3.3, §1.5). Subclasses supply their
- * content through [onCreateSheetContent].
+ * The hand-built version that stood here had to fake the drag handle, the
+ * spring, the scrim and the dismiss gesture; §4.15 names exactly that kind of
+ * approximation as the reason a UI ends up "similar but not the same". The
+ * shape (20 dp top corners, §4.8) and the surface colour come from
+ * `Theme.Morsecode.BottomSheet`.
+ *
+ * Subclasses keep the same one-method contract they had before.
  */
-abstract class BottomSheet : AppCompatDialogFragment() {
+abstract class BottomSheet : BottomSheetDialogFragment() {
 
-    /** Build the sheet body. The handle and the background are provided here. */
     protected abstract fun onCreateSheetContent(context: Context): View
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val context = requireContext()
-        val dialog = AppCompatDialog(context, R.style.Theme_Morsecode_Dialog)
+    override fun getTheme(): Int = R.style.Theme_Morsecode_BottomSheet
 
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val dialog = BottomSheetDialog(requireContext(), theme)
+        // §4.12: the sheet opens at a useful height instead of peeking.
+        dialog.behavior.skipCollapsed = true
+        dialog.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+        return dialog
+    }
+
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View {
+        val context = requireContext()
         val root = LinearLayout(context)
         root.orientation = LinearLayout.VERTICAL
-        val background = GradientDrawable()
-        background.setColor(ThemeColors.resolve(context, R.attr.colorSurfaceRaised))
-        val radius = Shapes.dp(context, 20f)
-        background.cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-        root.background = background
-
-        root.addView(dragHandle(context))
+        val pad = Shapes.dpInt(context, 16f)
+        root.setPadding(pad, Shapes.dpInt(context, 8f), pad, pad)
+        // Material draws its own drag handle; ours would be a second one.
+        root.addView(
+            com.google.android.material.bottomsheet.BottomSheetDragHandleView(context),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
         root.addView(
             onCreateSheetContent(context),
             LinearLayout.LayoutParams(
@@ -48,37 +61,6 @@ abstract class BottomSheet : AppCompatDialogFragment() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
-
-        dialog.setContentView(root)
-        val window = dialog.window
-        if (window != null) {
-            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            window.setLayout(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-            )
-            window.setGravity(Gravity.BOTTOM)
-            window.setWindowAnimations(R.style.Animation_Morsecode_BottomSheet)
-        }
-        return dialog
-    }
-
-    private fun dragHandle(context: Context): View {
-        val container = LinearLayout(context)
-        container.gravity = Gravity.CENTER
-        val pad = Shapes.dpInt(context, 10f)
-        container.setPadding(0, pad, 0, pad)
-
-        val handle = View(context)
-        handle.background = Shapes.pill(
-            context,
-            ThemeColors.resolve(context, R.attr.colorHairline),
-        )
-        handle.contentDescription = context.getString(R.string.cd_drag_handle)
-        container.addView(
-            handle,
-            LinearLayout.LayoutParams(Shapes.dpInt(context, 36f), Shapes.dpInt(context, 4f)),
-        )
-        return container
+        return root
     }
 }

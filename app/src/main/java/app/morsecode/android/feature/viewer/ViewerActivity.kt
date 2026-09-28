@@ -104,9 +104,23 @@ class ViewerActivity : ImmersiveActivity() {
         }
         actionRow.addView(circleAction(R.drawable.ic_trash, R.string.viewer_action_delete) { delete() })
         actionRow.addView(circleAction(R.drawable.ic_info, R.string.viewer_action_info) { info() })
-        actionRow.addView(
-            circleAction(R.drawable.ic_send, R.string.viewer_action_send, accent = true) { sendCurrent() },
+        // §6.10's accent circular SEND FAB — Material's, so it carries the
+        // elevation, ripple and pressed state the mock shows (§3.3).
+        val send = com.google.android.material.floatingactionbutton.FloatingActionButton(this)
+        send.setImageResource(R.drawable.ic_send)
+        send.contentDescription = getString(R.string.viewer_action_send)
+        send.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(ThemeColors.accent(this))
+        send.imageTintList = android.content.res.ColorStateList.valueOf(
+            ThemeColors.resolve(this, R.attr.colorInkOnAccent),
         )
+        send.setOnClickListener { sendCurrent() }
+        val fabParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        )
+        fabParams.marginStart = Shapes.dpInt(this, 8f)
+        actionRow.addView(send, fabParams)
     }
 
     private fun circleAction(

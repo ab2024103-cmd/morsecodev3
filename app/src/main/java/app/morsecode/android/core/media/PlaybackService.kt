@@ -6,15 +6,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaPlayer
 import android.os.Build
 import android.os.IBinder
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import app.morsecode.android.MainActivity
 import app.morsecode.android.R
 import app.morsecode.android.core.util.Ids
@@ -32,9 +33,15 @@ import app.morsecode.android.di.AppServices
  */
 class PlaybackService : Service() {
 
-    private var player: MediaPlayer? = null
-    private var session: MediaSessionCompat? = null
-    private var focusRequest: AudioFocusRequest? = null
+    /**
+     * §3.3 [CHANGED]: ExoPlayer, not MediaPlayer. §6.11's reason is codec
+     * coverage on API 23 devices and seekTo semantics — the reference phone
+     * refusing files that play everywhere else is exactly the MediaPlayer
+     * failure mode. ExoPlayer also owns audio focus and becoming-noisy, so
+     * the hand-rolled versions of both are gone.
+     */
+    private var player: ExoPlayer? = null
+    private var session: MediaSession? = null
     private var noisyRegistered = false
 
     private val queue get() = AppServices.playbackQueue
@@ -51,17 +58,41 @@ class PlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        session = MediaSessionCompat(this, "morsecode.playback").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() = play()
-                override fun onPause() = pause()
-                override fun onSkipToNext() = skipNext()
-                override fun onSkipToPrevious() = skipPrevious()
-                override fun onSeekTo(pos: Long) = seekTo(pos)
-                override fun onStop() = stopPlayback()
-            })
-            isActive = true
-        }
+        val exo = ExoPlayer.Builder(this)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                // handleAudioFocus: ExoPlayer ducks, pauses and resumes for us
+                // (§6.11's focus requirement), correctly on every API level.
+                true,
+            )
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+        exo.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                queue.setPlaying(isPlaying)
+                updateSession()
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    // Repeat ONE stays, ALL wraps, OFF stops — the queue
+                    // decides, never this listener.
+                    if (queue.advance()) startTrack() else stopPlayback()
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                // §6.11.0 (Stage 21) will make this user-visible; for now it
+                // must not throw and must not wedge the service.
+                AppServices.logStore.e("Playback failed: ${error.errorCodeName}")
+                if (queue.advance()) startTrack() else stopPlayback()
+            }
+        })
+        player = exo
+        session = MediaSession.Builder(this, exo).build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -90,50 +121,24 @@ class PlaybackService : Service() {
 
     private fun startTrack() {
         val track = queue.state.value.current ?: return
-        releasePlayer()
-        if (!requestFocus()) return
-
-        player = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build(),
-            )
-            setDataSource(this@PlaybackService, track.uri)
-            setOnCompletionListener {
-                // Repeat ONE stays, ALL wraps, OFF stops — all decided by the
-                // queue, never re-derived here.
-                if (queue.advance()) startTrack() else stopPlayback()
-            }
-            setOnPreparedListener { prepared ->
-                prepared.setVolume(volume.gain, volume.gain)
-                prepared.start()
-                queue.setPlaying(true)
-                updateSession()
-                startForeground(NOTIFICATION_ID, buildNotification())
-            }
-            prepareAsync()
-        }
-        registerNoisy()
+        val exo = player ?: return
+        exo.setMediaItem(Media3Item.fromUri(track.uri))
+        exo.volume = volume.gain
+        exo.prepare()
+        exo.play()
+        queue.setPlaying(true)
+        updateSession()
+        startForeground(NOTIFICATION_ID, buildNotification())
     }
 
     private fun play() {
-        val active = player
-        if (active == null) {
-            startTrack()
-            return
-        }
-        if (!requestFocus()) return
-        active.start()
-        queue.setPlaying(true)
-        updateSession()
+        val exo = player ?: return startTrack()
+        if (exo.currentMediaItem == null) return startTrack()
+        exo.play()
     }
 
     private fun pause() {
-        player?.takeIf { it.isPlaying }?.pause()
-        queue.setPlaying(false)
-        updateSession()
+        player?.pause()
     }
 
     private fun skipNext() {
@@ -147,15 +152,15 @@ class PlaybackService : Service() {
 
     /** §6.11: release commits the seek, and seeking while paused stays paused. */
     private fun seekTo(positionMillis: Long) {
-        val active = player ?: return
-        val clamped = SeekContract.clamp(positionMillis, active.duration.toLong())
-        active.seekTo(clamped.toInt())
+        val exo = player ?: return
+        val clamped = SeekContract.clamp(positionMillis, exo.duration.coerceAtLeast(0))
+        exo.seekTo(clamped)
         queue.setPosition(clamped)
         updateSession()
     }
 
     fun applyVolume() {
-        player?.setVolume(volume.gain, volume.gain)
+        player?.volume = volume.gain
     }
 
     private fun stopPlayback() {
@@ -171,68 +176,16 @@ class PlaybackService : Service() {
     }
 
     private fun releasePlayer() {
-        player?.runCatching {
-            if (isPlaying) stop()
-            release()
-        }
+        player?.release()
         player = null
-        abandonFocus()
         unregisterNoisy()
     }
 
-    // ----- Audio focus ------------------------------------------------------
-
-    private fun requestFocus(): Boolean {
-        val manager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return true
-        return if (Build.VERSION.SDK_INT >= 26) {
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build(),
-                )
-                .setOnAudioFocusChangeListener { change -> onFocusChange(change) }
-                .build()
-            focusRequest = request
-            manager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            manager.requestAudioFocus(
-                { change -> onFocusChange(change) },
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN,
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
-    }
-
-    private fun onFocusChange(change: Int) {
-        when (change) {
-            AudioManager.AUDIOFOCUS_LOSS -> pause()
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause()
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
-                player?.setVolume(volume.gain * DUCK, volume.gain * DUCK)
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                player?.setVolume(volume.gain, volume.gain)
-                if (queue.state.value.isPlaying) player?.start()
-            }
-        }
-    }
-
-    private fun abandonFocus() {
-        val manager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        if (Build.VERSION.SDK_INT >= 26) {
-            focusRequest?.let { manager.abandonAudioFocusRequest(it) }
-            focusRequest = null
-        }
-    }
-
-    private fun registerNoisy() {
-        if (noisyRegistered) return
-        registerReceiver(becomingNoisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-        noisyRegistered = true
-    }
-
+    /**
+     * ExoPlayer holds audio focus and handles ACTION_AUDIO_BECOMING_NOISY
+     * itself (see the builder above), so the ~90 lines that did both by hand
+     * are gone rather than left beside it (§3.3: replace, do not layer).
+     */
     private fun unregisterNoisy() {
         if (!noisyRegistered) return
         runCatching { unregisterReceiver(becomingNoisy) }
@@ -242,24 +195,8 @@ class PlaybackService : Service() {
     // ----- Session and notification ----------------------------------------
 
     private fun updateSession() {
-        val active = player ?: return
-        val state = if (queue.state.value.isPlaying) {
-            PlaybackStateCompat.STATE_PLAYING
-        } else {
-            PlaybackStateCompat.STATE_PAUSED
-        }
-        session?.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(
-                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                        PlaybackStateCompat.ACTION_SEEK_TO,
-                )
-                .setState(state, active.currentPosition.toLong(), 1f)
-                .build(),
-        )
-        queue.setPosition(active.currentPosition.toLong())
+        val exo = player ?: return
+        queue.setPosition(exo.currentPosition.coerceAtLeast(0))
         androidx.core.app.NotificationManagerCompat.from(this)
             .notify(NOTIFICATION_ID, buildNotification())
     }
