@@ -1698,3 +1698,43 @@ No visual delta has been silently marked fixed; it remains to run on the
 - Gradle compilation/unit/instrumented execution remains blocked locally because
   `java` is not installed. The listed tests were added but are **not claimed to
   have run** in this environment.
+
+### CI validation — run 36403814640
+
+The deferred Android-capable validation was completed on GitHub Actions, rather
+than being marked complete from this checkout. Run
+[`36403814640`](https://github.com/ab2024103-cmd/morsecodev3/actions/runs/36403814640)
+on `6abb243` is green end-to-end:
+
+- build lint passed; **239 unit tests** ran with **0 failures / 0 skipped**;
+  debug/release assembly, APK composition, artifact publication and signing
+  checks completed;
+- **API 23:** 8 instrumented tests, 0 failed / 0 skipped, 42 normal captures;
+- **API 34:** 8 instrumented tests, 0 failed / 0 skipped, 42 normal captures.
+
+This validates the Android-6-safe Files comparator and Android-6-safe ZIP
+streaming repairs. It does **not** settle §4.15/A35: both reports still have
+zero size-sweep frames, so visual width/fidelity comparison remains BLOCKED.
+
+## Stage 21 — real-device bug list (active)
+
+### P0: malformed music is recoverable (§6.11.0)
+
+`PlaybackService` now installs its `Player.Listener` before any item is
+prepared, guards synchronous `setMediaItem` / `prepare` / `play` failures, and
+turns every player error into a retained `PlaybackQueue.Failure`. The
+Now-Playing screen displays **“Can’t play this file · <name>”**, acknowledges
+the message, skips to the next unfailed item, and stops safely when no playable
+item remains. Failed URIs are remembered for the service lifetime, bounding
+Repeat All/Repeat One so a queue of unreadable files cannot loop indefinitely.
+
+`PlayerContractTest.anUnplayableTrackProducesAnAcknowledgablePlayerError`
+proves the visible error event survives long enough for the screen and is not
+replayed after acknowledgement. GitHub Actions run
+[`36406534392`](https://github.com/ab2024103-cmd/morsecodev3/actions/runs/36406534392)
+validated commit `491c222` successfully on build, API 23, and API 34.
+
+The API-23 repairs for the Files sort crash and WebShare ZIP constructor crash
+remain covered by the preceding green run. Hardware-only malformed-media cases
+(truncated, DRM and unusual codecs) still need the §21 real-device matrix; they
+are not represented as a false PASS here.
