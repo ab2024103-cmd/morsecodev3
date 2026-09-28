@@ -43,8 +43,11 @@ class WebSessions(private val clock: () -> Long = { System.currentTimeMillis() }
 
     /** A browser's first call. It gets an id and a waiting screen, nothing else. */
     fun open(userAgent: String, address: String): Session {
+        // A declined browser must keep receiving its final state while it
+        // polls/reloads. Creating a fresh PENDING session here would silently
+        // revive a rejection and prompt the phone again (§7.1 / §17.2).
         val existing = sessions.values.firstOrNull {
-            it.address == address && it.userAgent == userAgent && it.state != State.REJECTED
+            it.address == address && it.userAgent == userAgent
         }
         if (existing != null) return touch(existing.id) ?: existing
 

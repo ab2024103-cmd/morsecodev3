@@ -98,6 +98,9 @@ class WebShareTest {
         val rejected = sessions.reject(sessions.open("Chrome", "1.2.3.4").id)!!
         assertNull(rejected.token)
         assertNull(sessions.authorise("anything"))
+        val polledAgain = sessions.open("Chrome", "1.2.3.4")
+        assertEquals("a rejected browser cannot reopen consent by polling", rejected.id, polledAgain.id)
+        assertEquals(WebSessions.State.REJECTED, polledAgain.state)
 
         val live = sessions.accept(sessions.open("Firefox", "1.2.3.5").id)!!
         assertNotNull(sessions.authorise(live.token))
