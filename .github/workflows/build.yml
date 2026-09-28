@@ -405,9 +405,13 @@ jobs:
       - name: Fail if the instrumented suite failed
         if: always()
         run: |
-          echo "Instrumented Gradle exit: ${INSTRUMENTED_GRADLE_EXIT:-missing}"
-          if [ "${INSTRUMENTED_GRADLE_EXIT:-1}" != "0" ]; then
-            echo "::error::the instrumented suite failed on API ${{ matrix.api }} —" \
+          # android-emulator-runner executes its script in a child environment;
+          # use the JUnit XML gathered by the outer Collect step as the source
+          # of truth. It both catches a non-zero test run and avoids falsely
+          # failing a green suite because a child-only shell variable vanished.
+          if ! grep -Eq '^- tests: \*\*[1-9][0-9]*\*\*, failed: \*\*0\*\*' emulator-report.md; then
+            echo "::error::the instrumented suite failed or produced no valid JUnit result on API ${{ matrix.api }} —" \
                  "see the emulator-api${{ matrix.api }} artifact and the release notes"
             exit 1
           fi
+          echo "Instrumented JUnit results are green on API ${{ matrix.api }}."
