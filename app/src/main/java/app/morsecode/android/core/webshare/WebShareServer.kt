@@ -67,7 +67,9 @@ class WebShareServer(
 
     /** Consent belongs to the phone UI, never to a blocking NanoHTTPD worker. */
     private val consentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val consentInFlight = ConcurrentHashMap.newKeySet<String>()
+    // Do not use ConcurrentHashMap.newKeySet(): that Java-8 convenience is
+    // absent on Android 6. The map is our API-23-safe atomic set instead.
+    private val consentInFlight = ConcurrentHashMap<String, Boolean>()
 
     init {
         // A phone-originated offer reaches its owning browser immediately. The
@@ -153,7 +155,16 @@ class WebShareServer(
 
     /** One phone dialog per browser session, regardless of how often it polls. */
     private fun requestConsent(session: WebSessions.Session) {
-        if (!consentInFlight.add(session.id)) return
+        // ConcurrentHashMap.putIfAbsent is a Java-8 default on Android; keep
+        // this explicit lock for API 23 while retaining one dialog per id.
+        val claimed = synchronized(consentInFlight) {
+            if (consentInFlight.containsKey(session.id)) false
+            else {
+                consentInFlight[session.id] = true
+                true
+            }
+        }
+        if (!claimed) return
         consentScope.launch {
             try {
                 val accepted = onConsentNeeded(session)
